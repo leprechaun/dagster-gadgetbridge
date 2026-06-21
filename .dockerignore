@@ -1,0 +1,4 @@
+.tmp_dagster_*
+.venv
+.git
+.env
