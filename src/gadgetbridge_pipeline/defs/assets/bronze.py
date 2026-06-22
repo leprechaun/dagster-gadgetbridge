@@ -33,17 +33,19 @@ def gadgetbridge_db_file(context: AssetExecutionContext, s3: S3ClientResource) -
         },
     )
 
-
-def _read_table(table: str, db_path: str, settings: Dict[str, str]) -> pl.DataFrame:
-    return pl.read_database_uri(
-        f"SELECT * FROM {table}",
-        f"sqlite://{db_path}"
-    ).with_columns(
+def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
+    return df.with_columns(
         pl.from_epoch(
-            pl.col("TIMESTAMP"), time_unit=settings.get("epoch_unit", "s")
+            pl.col("TIMESTAMP"),
+            time_unit=epoch_unit
         ).alias("TIMESTAMP")
     )
 
+def _read_table(table: str, db_path: str) -> pl.DataFrame:
+    return pl.read_database_uri(
+        f"SELECT * FROM {table}",
+        f"sqlite://{db_path}"
+    )
 
 _TABLES = {
     "huami_extended_activity_sample": {
@@ -86,7 +88,13 @@ def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
         automation_condition=AutomationCondition.eager(),
     )
     def _asset(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-        return _read_table(table_name.upper(), gadgetbridge_db_file, settings)
+        return apply_bronze_transform(
+            _read_table(
+                table_name.upper(),
+                gadgetbridge_db_file),
+            settings.get('epoch_unit', 'ms')
+        )
+
     _asset.__name__ = table_name
     return _asset
 
