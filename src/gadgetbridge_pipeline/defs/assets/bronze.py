@@ -98,5 +98,5 @@ def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
     _asset.__name__ = table_name
     return _asset
 
-
-defs = Definitions(assets=[gadgetbridge_db_file] + [_make_bronze_asset(table, settings) for (table, settings) in _TABLES.items()])
+_tables = [_make_bronze_asset(table, settings) for (table, settings) in _TABLES.items()]
+defs = Definitions(assets=[gadgetbridge_db_file] + _tables)
