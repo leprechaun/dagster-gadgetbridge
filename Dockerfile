@@ -7,18 +7,6 @@ ENV PYTHONUNBUFFERED=1
 RUN pip install --upgrade pip
 RUN pip install --upgrade uv
 
-# Install dagster and any other dependencies your project requires
-RUN \
-    uv pip install --system \
-        dagster \
-        dagster-postgres \
-        dagster-k8s \
-        # add any other dependencies here
-        dagster-aws \
-        dagster-deltalake-polars \
-        connectorx \
-        polars
-
 # Copy your Dagster project. You may need to replace the filepath depending on your project structure
 WORKDIR /deploy_k8s/
 

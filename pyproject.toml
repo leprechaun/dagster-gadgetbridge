@@ -10,7 +10,6 @@ dependencies = [
     "dagster-deltalake-polars>=0.29.8",
     "dagster-k8s>=0.29.8",
     "dagster-postgres>=0.29.8",
-    "duckdb>=1.5.3",
     "polars>=1.41.2",
     "pytest (>=9.1.1,<10.0.0)",
     "ruff>=0.15.18",
