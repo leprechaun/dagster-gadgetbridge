@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM python:3.14
 
 
 # This makes sure that logs show up immediately instead of being buffered
