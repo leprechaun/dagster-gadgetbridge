@@ -9,7 +9,7 @@ RUN pip install --upgrade uv
 
 # Install dagster and any other dependencies your project requires
 RUN \
-    pip install \
+    uv pip install --system \
         dagster \
         dagster-postgres \
         dagster-k8s \
