@@ -3,6 +3,7 @@ import polars as pl
 import dagster as dg
 from dagster import AutomationCondition, Definitions, AssetExecutionContext, Output
 from gadgetbridge_pipeline.defs.resources import S3ClientResource
+from typing import Dict
 
 _SQLITE_LOCAL_PATH = "/tmp/gb.db"
 
@@ -33,56 +34,61 @@ def gadgetbridge_db_file(context: AssetExecutionContext, s3: S3ClientResource) -
     )
 
 
-def _read_table(table: str, db_path: str) -> pl.DataFrame:
-    return pl.read_database_uri(f"SELECT * FROM {table}", f"sqlite://{db_path}")
+def _read_table(table: str, db_path: str, settings: Dict[str, str]) -> pl.DataFrame:
+    return pl.read_database_uri(
+        f"SELECT * FROM {table}",
+        f"sqlite://{db_path}"
+    ).with_columns(
+        pl.from_epoch(
+            pl.col("TIMESTAMP"), time_unit=settings.get("epoch_unit", "s")
+        ).alias("TIMESTAMP")
+    )
 
 
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def huami_extended_activity_sample(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("HUAMI_EXTENDED_ACTIVITY_SAMPLE", gadgetbridge_db_file)
-
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def generic_temperature_sample(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("GENERIC_TEMPERATURE_SAMPLE", gadgetbridge_db_file)
-
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def huami_sleep_respiratory_rate_sample(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("HUAMI_SLEEP_RESPIRATORY_RATE_SAMPLE", gadgetbridge_db_file)
-
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def generic_hrv_value_sample(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("GENERIC_HRV_VALUE_SAMPLE", gadgetbridge_db_file)
-
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def huami_stress_sample(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("HUAMI_STRESS_SAMPLE", gadgetbridge_db_file)
-
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def huami_spo2_sample(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("HUAMI_SPO2_SAMPLE", gadgetbridge_db_file)
-
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def huami_pai_sample(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("HUAMI_PAI_SAMPLE", gadgetbridge_db_file)
-
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def battery_level(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("BATTERY_LEVEL", gadgetbridge_db_file)
-
-@dg.asset(group_name="gadgetbridge", io_manager_key="gadgetbridge_io_manager", key_prefix="gadgetbridge", automation_condition=AutomationCondition.eager())
-def huami_sleep_session_sample(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-    return _read_table("HUAMI_SLEEP_SESSION_SAMPLE", gadgetbridge_db_file)
+_TABLES = {
+    "huami_extended_activity_sample": {
+        "epoch_unit": "s"
+    },
+    "generic_temperature_sample": {
+        "epoch_unit": "ms"
+    },
+    "huami_sleep_respiratory_rate_sample": {
+        "epoch_unit": "ms"
+    },
+    "generic_hrv_value_sample": {
+        "epoch_unit": "ms"
+    },
+    "huami_stress_sample": {
+        "epoch_unit": "ms"
+    },
+    "huami_spo2_sample": {
+        "epoch_unit": "ms"
+    },
+    "huami_pai_sample": {
+        "epoch_unit": "ms"
+    },
+    "battery_level": {
+        "epoch_unit": "s"
+    },
+    "huami_sleep_session_sample": {
+        "epoch_unit": "ms"
+    },
+}
 
 
-defs = Definitions(assets=[
-    gadgetbridge_db_file,
-    huami_extended_activity_sample,
-    generic_temperature_sample,
-    huami_sleep_respiratory_rate_sample,
-    generic_hrv_value_sample,
-    huami_stress_sample,
-    huami_spo2_sample,
-    huami_pai_sample,
-    battery_level,
-    huami_sleep_session_sample,
-])
+
+def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
+    @dg.asset(
+        name=table_name.lower(),
+        group_name="gadgetbridge",
+        io_manager_key="gadgetbridge_io_manager",
+        key_prefix="gadgetbridge",
+        automation_condition=AutomationCondition.eager(),
+    )
+    def _asset(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
+        return _read_table(table_name.upper(), gadgetbridge_db_file, settings)
+    _asset.__name__ = table_name
+    return _asset
+
+
+defs = Definitions(assets=[gadgetbridge_db_file] + [_make_bronze_asset(table, settings) for (table, settings) in _TABLES.items()])

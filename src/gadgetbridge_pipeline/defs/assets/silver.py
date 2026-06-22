@@ -3,7 +3,7 @@ import dagster as dg
 from dagster import AutomationCondition, Definitions, AssetExecutionContext
 from typing import Dict
 
-_BRONZE_TABLES = {
+_TABLES = {
     "huami_extended_activity_sample": {
         "epoch_unit": "s"
     },
@@ -35,9 +35,7 @@ _BRONZE_TABLES = {
 
 
 def apply_silver_transform(df: pl.DataFrame, epoch_unit: str) -> pl.DataFrame:
-    return df.with_columns(
-        pl.from_epoch(pl.col("TIMESTAMP"), time_unit=epoch_unit).alias("TIMESTAMP")
-    )
+    return df
 
 
 def _make_silver_asset(table_name: str, settings: Dict[str, str]):
@@ -58,4 +56,4 @@ def _make_silver_asset(table_name: str, settings: Dict[str, str]):
     return _asset
 
 
-defs = Definitions(assets=[_make_silver_asset(table, settings) for (table, settings) in _BRONZE_TABLES.items()])
+defs = Definitions(assets=[_make_silver_asset(table, settings) for (table, settings) in _TABLES.items()])
