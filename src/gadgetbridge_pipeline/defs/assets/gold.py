@@ -1,6 +1,6 @@
 import polars as pl
 import dagster as dg
-from dagster import AutomationCondition, Definitions, AssetExecutionContext
+from dagster import AutomationCondition, Definitions
 
 
 @dg.asset(

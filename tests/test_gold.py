@@ -4,7 +4,8 @@ from gadgetbridge_pipeline.defs.assets.gold import daily_health_snapshot
 
 
 def test_daily_health_snapshot_joins_and_averages():
-    ts = lambda d: datetime.fromisoformat(d)
+    def ts(d):
+        return datetime.fromisoformat(d)
 
     activity_sample = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")], "HEART_RATE": [40.0, 60.0]})
     hrv = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")], "VALUE": [40.0, 60.0]})
