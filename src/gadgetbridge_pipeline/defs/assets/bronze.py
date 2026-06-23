@@ -82,7 +82,7 @@ _TABLES = {
 def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
     @dg.asset(
         name=table_name.lower(),
-        group_name="gadgetbridge",
+        group_name="gadgetbridge_bronze",
         io_manager_key="gadgetbridge_io_manager",
         key_prefix="gadgetbridge",
         automation_condition=AutomationCondition.eager(),
