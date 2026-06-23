@@ -18,6 +18,9 @@ jobs:
       - name: Run ruff
         run: uv run ruff check
 
+      - name: Run dg deps check
+        run: uv run dg check defs
+
       - name: Run tests
         run: uv run pytest tests/
 
