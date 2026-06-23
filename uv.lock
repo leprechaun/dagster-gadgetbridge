@@ -1171,7 +1171,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "dagster-dg-cli" },
+    { name = "dagster-dg-cli", specifier = ">=1.13.10" },
     { name = "dagster-webserver" },
     { name = "pytest", specifier = ">=9.1.1,<10.0.0" },
     { name = "ruff", specifier = ">=0.15.18" },
