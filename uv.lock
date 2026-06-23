@@ -1147,8 +1147,6 @@ dependencies = [
     { name = "dagster-k8s" },
     { name = "dagster-postgres" },
     { name = "polars" },
-    { name = "pytest" },
-    { name = "ruff" },
 ]
 
 [package.dev-dependencies]
@@ -1156,6 +1154,7 @@ dev = [
     { name = "dagster-dg-cli" },
     { name = "dagster-webserver" },
     { name = "pytest" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -1168,15 +1167,14 @@ requires-dist = [
     { name = "dagster-k8s", specifier = ">=0.29.8" },
     { name = "dagster-postgres", specifier = ">=0.29.8" },
     { name = "polars", specifier = ">=1.41.2" },
-    { name = "pytest", specifier = ">=9.1.1,<10.0.0" },
-    { name = "ruff", specifier = ">=0.15.18" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "dagster-dg-cli" },
     { name = "dagster-webserver" },
-    { name = "pytest" },
+    { name = "pytest", specifier = ">=9.1.1,<10.0.0" },
+    { name = "ruff", specifier = ">=0.15.18" },
 ]
 
 [[package]]

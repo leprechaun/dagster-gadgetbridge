@@ -8,11 +8,11 @@ from dagster import AutomationCondition, Definitions
     io_manager_key="gadgetbridge_gold_io_manager",
     key_prefix="gadgetbridge-gold",
     ins={
-        "activity_sample":         dg.AssetIn(key=dg.AssetKey(["gadgetbridge-silver", "huami_extended_activity_sample"])),
-        "hrv":         dg.AssetIn(key=dg.AssetKey(["gadgetbridge-silver", "generic_hrv_value_sample"])),
-        "spo2":        dg.AssetIn(key=dg.AssetKey(["gadgetbridge-silver", "huami_spo2_sample"])),
-        "stress":      dg.AssetIn(key=dg.AssetKey(["gadgetbridge-silver", "huami_stress_sample"])),
-        "temperature": dg.AssetIn(key=dg.AssetKey(["gadgetbridge-silver", "generic_temperature_sample"])),
+        "activity_sample": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "huami_extended_activity_sample"])),
+        "hrv":             dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "generic_hrv_value_sample"])),
+        "spo2":            dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "huami_spo2_sample"])),
+        "stress":          dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "huami_stress_sample"])),
+        "temperature":     dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "generic_temperature_sample"])),
     },
     automation_condition=AutomationCondition.eager(),
 )

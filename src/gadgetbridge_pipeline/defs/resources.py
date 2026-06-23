@@ -58,11 +58,6 @@ defs = Definitions(resources={
         storage_options=_s3_config,
         schema="gadgetbridge-raw",
     ),
-    "gadgetbridge_silver_io_manager": DeltaLakePolarsIOManager(
-        root_uri="s3://deltalake/",
-        storage_options=_s3_config,
-        schema="gadgetbridge-silver",
-    ),
     "gadgetbridge_gold_io_manager": DeltaLakePolarsIOManager(
         root_uri="s3://deltalake/",
         storage_options=_s3_config,
