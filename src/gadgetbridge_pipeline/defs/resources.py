@@ -54,7 +54,7 @@ defs = Definitions(resources={
         endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
     ),
     "deltalake_io_manager": DeltaLakePolarsIOManager(
-        root_uri="s3://deltalake/",
+        root_uri="s3://deltalake/gadgetbridge/",
         storage_options=_s3_config,
         # no schema — key_prefix on each asset drives the subfolder
     ),

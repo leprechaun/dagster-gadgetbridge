@@ -82,9 +82,9 @@ _TABLES = {
 def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
     @dg.asset(
         name=table_name.lower(),
-        group_name="gadgetbridge_bronze",
+        group_name="gadgetbridge",
         io_manager_key="deltalake_io_manager",
-        key_prefix="gadgetbridge-bronze",
+        key_prefix=["gadgetbridge", "bronze"],
         automation_condition=AutomationCondition.eager(),
     )
     def _asset(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
