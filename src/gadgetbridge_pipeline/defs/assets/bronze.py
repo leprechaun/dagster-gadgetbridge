@@ -9,7 +9,8 @@ _SQLITE_LOCAL_PATH = "/tmp/gb.db"
 
 
 @dg.asset(
-    group_name="ingestion",
+    group_name="gadgetbridge",
+    key_prefix="gadgetbridge",
     description="SQLite database downloaded from S3. Re-downloaded only when the S3 ETag changes.",
     io_manager_key="sqlite_s3_io_manager",
 )
