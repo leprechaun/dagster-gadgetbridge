@@ -49,8 +49,8 @@ defs = Definitions(resources={
         key="GadgetBridge/Gadgetbridge.db",
     ),
     "sqlite_s3_io_manager": SqliteS3IOManager(
-        bucket="android-backups",
-        prefix="sqlite-cache",
+        bucket="deltalake",
+        prefix="gadgetbridge/raw",
         endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
     ),
     "deltalake_io_manager": DeltaLakePolarsIOManager(
