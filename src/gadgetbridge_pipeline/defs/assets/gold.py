@@ -5,14 +5,14 @@ from dagster import AutomationCondition, Definitions
 
 @dg.asset(
     group_name="gadgetbridge_gold",
-    io_manager_key="gadgetbridge_gold_io_manager",
+    io_manager_key="deltalake_io_manager",
     key_prefix="gadgetbridge-gold",
     ins={
-        "activity_sample": dg.AssetIn(key=dg.AssetKey(["gadgetbridge_bronze", "huami_extended_activity_sample"])),
-        "hrv":             dg.AssetIn(key=dg.AssetKey(["gadgetbridge_bronze", "generic_hrv_value_sample"])),
-        "spo2":            dg.AssetIn(key=dg.AssetKey(["gadgetbridge_bronze", "huami_spo2_sample"])),
-        "stress":          dg.AssetIn(key=dg.AssetKey(["gadgetbridge_bronze", "huami_stress_sample"])),
-        "temperature":     dg.AssetIn(key=dg.AssetKey(["gadgetbridge_bronze", "generic_temperature_sample"])),
+        "activity_sample": dg.AssetIn(key=dg.AssetKey(["gadgetbridge-bronze", "huami_extended_activity_sample"])),
+        "hrv":             dg.AssetIn(key=dg.AssetKey(["gadgetbridge-bronze", "generic_hrv_value_sample"])),
+        "spo2":            dg.AssetIn(key=dg.AssetKey(["gadgetbridge-bronze", "huami_spo2_sample"])),
+        "stress":          dg.AssetIn(key=dg.AssetKey(["gadgetbridge-bronze", "huami_stress_sample"])),
+        "temperature":     dg.AssetIn(key=dg.AssetKey(["gadgetbridge-bronze", "generic_temperature_sample"])),
     },
     automation_condition=AutomationCondition.eager(),
 )

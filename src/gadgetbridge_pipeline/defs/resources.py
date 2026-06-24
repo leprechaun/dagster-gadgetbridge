@@ -53,14 +53,9 @@ defs = Definitions(resources={
         prefix="sqlite-cache",
         endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
     ),
-    "gadgetbridge_io_manager": DeltaLakePolarsIOManager(
+    "deltalake_io_manager": DeltaLakePolarsIOManager(
         root_uri="s3://deltalake/",
         storage_options=_s3_config,
-        schema="gadgetbridge-raw",
-    ),
-    "gadgetbridge_gold_io_manager": DeltaLakePolarsIOManager(
-        root_uri="s3://deltalake/",
-        storage_options=_s3_config,
-        schema="gadgetbridge-gold",
+        # no schema — key_prefix on each asset drives the subfolder
     ),
 })
