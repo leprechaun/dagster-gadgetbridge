@@ -9,14 +9,13 @@ from dagster_deltalake_polars import DeltaLakePolarsIOManager
 class SqliteS3IOManager(dg.ConfigurableIOManager):
     """Round-trips a local SQLite file through S3 so downstream pods can load it."""
     bucket: str
-    prefix: str
     endpoint_url: str
 
     def _s3(self):
         return boto3.client("s3", endpoint_url=self.endpoint_url)
 
     def _key(self, asset_key):
-        return f"{self.prefix}/{'/'.join(asset_key.path)}.db"
+        return f"{'/'.join(asset_key.path)}.db"
 
     def handle_output(self, context: OutputContext, obj: str):
         key = self._key(context.asset_key)
@@ -50,7 +49,6 @@ defs = Definitions(resources={
     ),
     "sqlite_s3_io_manager": SqliteS3IOManager(
         bucket="deltalake",
-        prefix="gadgetbridge/raw",
         endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
     ),
     "deltalake_io_manager": DeltaLakePolarsIOManager(
