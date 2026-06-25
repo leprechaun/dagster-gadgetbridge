@@ -1,6 +1,45 @@
 import polars as pl
 import dagster as dg
+import datetime
 from dagster import AutomationCondition, Definitions
+
+@dg.asset(
+    group_name="gadgetbridge",
+    io_manager_key="deltalake_io_manager",
+    key_prefix=["gadgetbridge", "gold"],
+    ins={
+        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+)
+def weekday_heart_rate_distribution_before_and_after(activity: pl.DataFrame) -> pl.DataFrame:
+    # MAGIC DATE
+    START_DATE = datetime.date(2026,5,24)
+    BIN_SIZE = 5
+
+    columns = ["TIMESTAMP","RAW_INTENSITY", "HEART_RATE", "STEPS"]
+    return activity.select(columns).with_columns(
+        (pl.col("TIMESTAMP") > START_DATE).alias("after"),
+        pl.col("TIMESTAMP").dt.weekday().alias("weekday"),
+    ).filter(
+        pl.col("weekday") < 6
+    ).with_columns(
+        pl.col("HEART_RATE") // BIN_SIZE * BIN_SIZE
+    ).group_by(
+        ['after', 'HEART_RATE']
+    ).agg(
+        pl.len()
+    ).pivot(
+        ['after'], values=['len']
+    ).with_columns(
+        pl.col('false') / pl.col('false').sum(),
+        pl.col('true') / pl.col('true').sum()
+    ).unpivot(
+        index='HEART_RATE'
+    ).rename({"variable":"after"}).filter(
+        pl.col("HEART_RATE") < 160,
+        pl.col("HEART_RATE") >= 40
+    )
 
 
 @dg.asset(
@@ -60,4 +99,4 @@ def daily_health_snapshot(
 
     return sorted_df
 
-defs = Definitions(assets=[daily_health_snapshot])
+defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after])
