@@ -15,7 +15,7 @@ class SqliteS3IOManager(dg.ConfigurableIOManager):
         return boto3.client("s3", endpoint_url=self.endpoint_url)
 
     def _key(self, asset_key):
-        return f"{'/'.join(asset_key.path)}.db"
+        return '/'.join(asset_key.path) + ".db"
 
     def handle_output(self, context: OutputContext, obj: str):
         key = self._key(context.asset_key)
