@@ -44,6 +44,32 @@ def weekday_heart_rate_distribution_before_and_after(context: AssetExecutionCont
         pl.col("HEART_RATE") >= 40
     )
 
+@dg.asset(
+    group_name="gadgetbridge",
+    io_manager_key="deltalake_io_manager",
+    key_prefix=["gadgetbridge", "gold"],
+    ins={
+        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+)
+def steps_per_day(activity):
+    return (
+        activity.select(['TIMESTAMP', 'STEPS'])
+        .group_by([
+            pl.col("TIMESTAMP").dt.date().alias("date")
+        ])
+        .agg(
+            pl.col("STEPS").sum()
+        ).sort(
+            by=['date']
+        ).with_columns(
+            pl.col("date").dt.weekday().alias("weekday"),
+        ).with_columns(
+            (pl.col("weekday") > 5).alias("is_weekend")
+        )
+    )
+
 
 @dg.asset(
     group_name="gadgetbridge",
@@ -102,4 +128,4 @@ def daily_health_snapshot(
 
     return sorted_df
 
-defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after])
+defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after, steps_per_day])
