@@ -1,7 +1,7 @@
 import polars as pl
 import dagster as dg
 import datetime
-from dagster import AutomationCondition, Definitions
+from dagster import AssetExecutionContext, AutomationCondition, Definitions
 
 @dg.asset(
     group_name="gadgetbridge",
@@ -12,10 +12,13 @@ from dagster import AutomationCondition, Definitions
     },
     automation_condition=AutomationCondition.eager(),
 )
-def weekday_heart_rate_distribution_before_and_after(activity: pl.DataFrame) -> pl.DataFrame:
+def weekday_heart_rate_distribution_before_and_after(context: AssetExecutionContext, activity: pl.DataFrame) -> pl.DataFrame:
     # MAGIC DATE
     START_DATE = datetime.date(2026,5,24)
     BIN_SIZE = 5
+
+    context.log.info("Shape: %s:%s" % (activity.shape[0], activity.shape[1]))
+    context.log.info("Columns: " + ",".join(activity.columns))
 
     columns = ["TIMESTAMP","RAW_INTENSITY", "HEART_RATE", "STEPS"]
     return activity.select(columns).with_columns(
