@@ -128,4 +128,43 @@ def daily_health_snapshot(
 
     return sorted_df
 
-defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after, steps_per_day])
+@dg.asset(
+    group_name="gadgetbridge",
+    io_manager_key="deltalake_io_manager",
+    key_prefix=["gadgetbridge", "gold"],
+    ins={
+        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+        "stress":   dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description="Daily step totals joined with average stress score, for correlation analysis",
+)
+def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFrame:
+    daily_steps = (
+        activity.select(["TIMESTAMP", "STEPS"])
+        .with_columns(pl.col("TIMESTAMP").dt.date().alias("date"))
+        .group_by("date")
+        .agg(pl.col("STEPS").sum().alias("total_steps"))
+    )
+
+    daily_stress = (
+        stress.select(["TIMESTAMP", "STRESS"])
+        .with_columns(pl.col("TIMESTAMP").dt.date().alias("date"))
+        .group_by("date")
+        .agg(
+            pl.col("STRESS").mean().alias("avg_stress"),
+            pl.col("STRESS").median().alias("median_stress"),
+        )
+    )
+
+    return (
+        daily_steps.join(daily_stress, on="date", how="inner")
+        .sort("date")
+        .with_columns(
+            pl.col("date").dt.weekday().alias("weekday"),
+            (pl.col("date").dt.weekday() >= 5).alias("is_weekend"),
+        )
+    )
+
+
+defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after, steps_per_day, steps_vs_stress])
