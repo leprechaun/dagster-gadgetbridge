@@ -221,8 +221,8 @@ for (table, settings) in _TABLES.items():
 def activity_heartrate_checks(huami_extended_activity_sample: pl.DataFrame) -> AssetCheckResult:
     act = huami_extended_activity_sample
 
-    minimum = act['HEART_RATE'].min()
-    maximum = act['HEART_RATE'].max()
+    minimum = int(act['HEART_RATE'].min())
+    maximum = int(act['HEART_RATE'].max())
 
     checks = {
         "is_positive": minimum > 0,
@@ -231,7 +231,10 @@ def activity_heartrate_checks(huami_extended_activity_sample: pl.DataFrame) -> A
 
     return AssetCheckResult(
         passed=all(list(checks.values())),
-        metadata=checks
+        metadata=checks.update({
+            "minimum": minimum,
+            "maximum": maximum,
+        })
     )
 
 _checks.append(activity_heartrate_checks)
