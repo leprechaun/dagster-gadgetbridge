@@ -1,0 +1,64 @@
+import polars as pl
+import dagster as dg
+from dagster import AutomationCondition, Definitions
+
+
+def _by_minute(df: pl.DataFrame, col: str, alias: str, group_by: list[str]) -> pl.DataFrame:
+    return (
+        df.with_columns(pl.col("TIMESTAMP").dt.truncate("1m").alias("MINUTE"))
+        .group_by(group_by)
+        .agg(pl.col(col).mean().alias(alias))
+    )
+
+
+@dg.asset(
+    group_name="gadgetbridge",
+    io_manager_key="deltalake_io_manager",
+    key_prefix=["gadgetbridge", "silver"],
+    ins={
+        "activity":        dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+        "temperature":     dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_temperature_sample"])),
+        "hrv":             dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_hrv_value_sample"])),
+        "stress":          dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
+        "spo2":            dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_spo2_sample"])),
+        "respiratory_rate": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_sleep_respiratory_rate_sample"])),
+        "battery":         dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description="Wide per-minute join of all bronze health metrics",
+)
+def per_minute_health_metrics(
+    activity: pl.DataFrame,
+    temperature: pl.DataFrame,
+    hrv: pl.DataFrame,
+    stress: pl.DataFrame,
+    spo2: pl.DataFrame,
+    respiratory_rate: pl.DataFrame,
+    battery: pl.DataFrame,
+) -> pl.DataFrame:
+    base = (
+        activity
+        .with_columns(pl.col("TIMESTAMP").dt.truncate("1m").alias("MINUTE"))
+        .drop(["TIMESTAMP", "UNKNOWN1"])
+    )
+
+    temp_min   = _by_minute(temperature,     "TEMPERATURE", "TEMPERATURE",      ["MINUTE", "DEVICE_ID", "USER_ID"])
+    hrv_min    = _by_minute(hrv,             "VALUE",       "HRV",              ["MINUTE", "DEVICE_ID", "USER_ID"])
+    stress_min = _by_minute(stress,          "STRESS",      "STRESS",           ["MINUTE", "DEVICE_ID", "USER_ID"])
+    spo2_min   = _by_minute(spo2,            "SPO2",        "SPO2",             ["MINUTE", "DEVICE_ID", "USER_ID"])
+    resp_min   = _by_minute(respiratory_rate,"RATE",        "RESPIRATORY_RATE", ["MINUTE", "DEVICE_ID", "USER_ID"])
+    batt_min   = _by_minute(battery,         "LEVEL",       "BATTERY_LEVEL",    ["MINUTE", "DEVICE_ID"])
+
+    return (
+        base
+        .join(temp_min,   on=["MINUTE", "DEVICE_ID", "USER_ID"], how="left")
+        .join(hrv_min,    on=["MINUTE", "DEVICE_ID", "USER_ID"], how="left")
+        .join(stress_min, on=["MINUTE", "DEVICE_ID", "USER_ID"], how="left")
+        .join(spo2_min,   on=["MINUTE", "DEVICE_ID", "USER_ID"], how="left")
+        .join(resp_min,   on=["MINUTE", "DEVICE_ID", "USER_ID"], how="left")
+        .join(batt_min,   on=["MINUTE", "DEVICE_ID"],            how="left")
+        .sort("MINUTE")
+    )
+
+
+defs = Definitions(assets=[per_minute_health_metrics])
