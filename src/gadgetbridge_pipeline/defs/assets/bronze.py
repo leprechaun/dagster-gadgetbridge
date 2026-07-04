@@ -213,6 +213,29 @@ for (table, settings) in _TABLES.items():
         _checks.append(c)
 
 
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"]),
+    blocking=True,
+    name="huami_extended_activity_sample_heartrate_checks"
+)
+def activity_heartrate_checks(huami_extended_activity_sample: pl.DataFrame) -> AssetCheckResult:
+    act = huami_extended_activity_sample
+
+    minimum = act['HEART_RATE'].min()
+    maximum = act['HEART_RATE'].max()
+
+    checks = {
+        "is_positive": minimum > 0,
+        "is_255 or below": maximum <= 255
+    }
+
+    return AssetCheckResult(
+        passed=all(list(checks.values())),
+        metadata=checks
+    )
+
+_checks.append(activity_heartrate_checks)
+
 defs = Definitions(
     assets=_tables,
     asset_checks=_checks
