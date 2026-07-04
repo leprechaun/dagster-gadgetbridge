@@ -1,6 +1,6 @@
 import polars as pl
 import dagster as dg
-from dagster import AutomationCondition, Definitions, AssetExecutionContext
+from dagster import AutomationCondition, Definitions, AssetExecutionContext, asset_check, AssetCheckResult
 from typing import Dict
 
 def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
@@ -48,15 +48,14 @@ _TABLES = {
     },
     "battery_level": {
         "epoch_unit": "s",
-        "description": "The battery level over time: 0% to 100%"
+        "description": "The battery level over time: 0% to 100%",
+        "schema": pl.Schema({'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'), 'DEVICE_ID': pl.Int64, 'LEVEL': pl.Int64, 'BATTERY_INDEX': pl.Int64})
     },
     "huami_sleep_session_sample": {
         "epoch_unit": "ms",
         "description": "sleep session with binary data. there can be overlapping sessions during the same day."
     },
 }
-
-
 
 def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
     @dg.asset(
@@ -78,5 +77,16 @@ def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
     _asset.__name__ = table_name
     return _asset
 
+@asset_check(asset="battery_level", blocking=True)
+def battery_level_schema(battery_level: pl.DataFrame) -> AssetCheckResult:
+    expected_schema = _TABLES['battery_level']['schema']
+    return AssetCheckResult(
+        passed=(expected_schema == battery_level.schema),
+        metadata={
+            "expected": expected_schema,
+            "actual_schema": battery_level.schema
+        },
+    )
+
 _tables = [_make_bronze_asset(table, settings) for (table, settings) in _TABLES.items()]
-defs = Definitions(assets=_tables)
+defs = Definitions(assets=_tables, asset_checks=[battery_level_schema])
