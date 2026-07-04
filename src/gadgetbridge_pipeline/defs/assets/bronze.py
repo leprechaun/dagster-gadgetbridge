@@ -22,41 +22,112 @@ def _read_table(table: str, db_path: str) -> pl.DataFrame:
 _TABLES = {
     "huami_extended_activity_sample": {
         "epoch_unit": "s",
-        "description": "a wide table of per minute metrics including step count, sleep, vigor of movement, etc"
+        "description": "a wide table of per minute metrics including step count, sleep, vigor of movement, etc",
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'USER_ID': pl.Int64,
+            'RAW_INTENSITY': pl.Int64,
+            'STEPS': pl.Int64,
+            'RAW_KIND': pl.Int64,
+            'HEART_RATE': pl.Int64,
+            'UNKNOWN1': pl.Int64,
+            'SLEEP': pl.Int64,
+            'DEEP_SLEEP': pl.Int64,
+            'REM_SLEEP': pl.Int64
+        })
     },
     "generic_temperature_sample": {
         "epoch_unit": "ms",
-        "description": "temperature of the sensor"
+        "description": "temperature of the sensor",
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'USER_ID': pl.Int64,
+            'TEMPERATURE': pl.Float64,
+            'TEMPERATURE_TYPE': pl.Int64,
+            'TEMPERATURE_LOCATION': pl.Int64
+        })
     },
     "huami_sleep_respiratory_rate_sample": {
         "epoch_unit": "ms",
-        "description": "night time respiratory rate"
+        "description": "night time respiratory rate",
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'USER_ID': pl.Int64,
+            'UTC_OFFSET': pl.Int64,
+            'RATE': pl.Int64
+        })
     },
     "generic_hrv_value_sample": {
         "epoch_unit": "ms",
-        "description": "Heart rate variability"
+        "description": "Heart rate variability",
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'USER_ID': pl.Int64,
+            'VALUE': pl.Int64
+        })
     },
     "huami_stress_sample": {
         "epoch_unit": "ms",
-        "description": "A bad nmeasurement of stress, based on HRV. Inaccurate."
+        "description": "A bad nmeasurement of stress, based on HRV. Inaccurate.",
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'USER_ID': pl.Int64,
+            'TYPE_NUM': pl.Int64,
+            'STRESS': pl.Int64
+        })
     },
     "huami_spo2_sample": {
         "epoch_unit": "ms",
-        "description": "SPO2 samples: more often at night"
+        "description": "SPO2 samples: more often at night",
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'USER_ID': pl.Int64,
+            'TYPE_NUM': pl.Int64,
+            'SPO2': pl.Int64
+        })
     },
     "huami_pai_sample": {
         "epoch_unit": "ms",
-        "description": "Amazfit's calculation of the PAI health metric"
+        "description": "Amazfit's calculation of the PAI health metric",
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'USER_ID': pl.Int64,
+            'UTC_OFFSET': pl.Int64,
+            'PAI_LOW': pl.Float64,
+            'PAI_MODERATE': pl.Float64,
+            'PAI_HIGH': pl.Float64,
+            'TIME_LOW': pl.Int64,
+            'TIME_MODERATE': pl.Int64,
+            'TIME_HIGH': pl.Int64,
+            'PAI_TODAY': pl.Float64,
+            'PAI_TOTAL': pl.Float64
+        })
     },
     "battery_level": {
         "epoch_unit": "s",
-        "description": "The battery level over time: 0% to 100%",
-        "schema": pl.Schema({'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'), 'DEVICE_ID': pl.Int64, 'LEVEL': pl.Int64, 'BATTERY_INDEX': pl.Int64})
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'LEVEL': pl.Int64,
+            'BATTERY_INDEX': pl.Int64
+        })
     },
     "huami_sleep_session_sample": {
         "epoch_unit": "ms",
-        "required": {"TIMESTAMP", "DEVICE_ID", "USER_ID", "DATA"},
-        "description": "sleep session with binary data. there can be overlapping sessions during the same day."
+        "description": "sleep session with binary data. there can be overlapping sessions during the same day.",
+        "schema": pl.Schema({
+            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'DEVICE_ID': pl.Int64,
+            'USER_ID': pl.Int64,
+            'DATA': pl.Binary
+        })
     },
 }
 
