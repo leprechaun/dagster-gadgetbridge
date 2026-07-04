@@ -1,6 +1,6 @@
 import polars as pl
 import dagster as dg
-from dagster import AutomationCondition, Definitions, AssetExecutionContext, asset_check, AssetCheckResult
+from dagster import AutomationCondition, Definitions, AssetExecutionContext, AssetCheckResult
 from typing import Dict
 
 def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
@@ -77,7 +77,7 @@ def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
     _asset.__name__ = table_name
     return _asset
 
-@asset_check(asset="battery_level", blocking=True)
+@dg.asset_check(asset=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"]), blocking=True)
 def battery_level_schema(battery_level: pl.DataFrame) -> AssetCheckResult:
     expected_schema = _TABLES['battery_level']['schema']
     return AssetCheckResult(
@@ -88,5 +88,12 @@ def battery_level_schema(battery_level: pl.DataFrame) -> AssetCheckResult:
         },
     )
 
-_tables = [_make_bronze_asset(table, settings) for (table, settings) in _TABLES.items()]
-defs = Definitions(assets=_tables, asset_checks=[battery_level_schema])
+_tables = [
+    _make_bronze_asset(table, settings)
+    for (table, settings) in _TABLES.items()
+]
+
+defs = Definitions(
+    assets=_tables,
+    asset_checks=[battery_level_schema]
+)
