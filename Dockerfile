@@ -14,7 +14,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv pip install --system -r pyproject.toml
 
 COPY . /deploy_k8s/
-RUN uv pip install --system -e .
+RUN uv pip install --system --no-deps -e .
 
 # Expose the port that your Dagster instance will run on
 EXPOSE 80
