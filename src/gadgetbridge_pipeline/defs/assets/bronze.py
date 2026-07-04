@@ -80,13 +80,30 @@ def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
 @dg.asset_check(asset=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"]), blocking=True)
 def battery_level_schema(battery_level: pl.DataFrame) -> AssetCheckResult:
     expected_schema = _TABLES['battery_level']['schema']
-    return AssetCheckResult(
-        passed=(expected_schema == battery_level.schema),
-        metadata={
-            "expected": expected_schema,
-            "actual_schema": battery_level.schema
-        },
-    )
+
+    actual_schema = battery_level.schema
+
+    if actual_schema != expected_schema:
+        differences = []
+
+        for column, expected_type in expected_schema.items():
+            actual_type = actual_schema.get(column)
+            if actual_type != expected_type:
+                differences.append(f"Column '{column}': expected {expected_type}, got {actual_type}")
+
+        for column in actual_schema:
+            if column not in expected_schema:
+                differences.append(f"Unexpected column: '{column}'")
+
+        return AssetCheckResult(
+            passed=False,
+            description="Schema mismatch",
+            metadata={"differences": "\n".join(differences)},
+        )
+    else:
+        return AssetCheckResult(
+            passed=True
+        )
 
 _tables = [
     _make_bronze_asset(table, settings)
