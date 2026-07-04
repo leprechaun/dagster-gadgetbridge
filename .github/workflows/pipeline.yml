@@ -22,7 +22,7 @@ jobs:
         run: uv run dg check defs
 
       - name: Run tests
-        run: uv run pytest tests/
+        run: uv run pytest -v tests/
 
   build-and-push:
     needs: test
