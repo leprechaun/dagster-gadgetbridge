@@ -1,7 +1,9 @@
+from typing import Any, Dict
+
 import polars as pl
 import dagster as dg
+
 from dagster import AutomationCondition, Definitions, AssetExecutionContext, AssetCheckResult
-from typing import Dict
 
 def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
     return df.with_columns(
@@ -53,11 +55,13 @@ _TABLES = {
     },
     "huami_sleep_session_sample": {
         "epoch_unit": "ms",
+        "required": {"TIMESTAMP", "DEVICE_ID", "USER_ID", "DATA"},
         "description": "sleep session with binary data. there can be overlapping sessions during the same day."
     },
 }
 
-def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
+def _make_asset(table_name: str, settings: Dict[str, Any]):
+
     @dg.asset(
         name=table_name.lower(),
         group_name="gadgetbridge",
@@ -75,42 +79,68 @@ def _make_bronze_asset(table_name: str, settings: Dict[str, str]):
         )
 
     _asset.__name__ = table_name
+
     return _asset
 
-@dg.asset_check(asset=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"]), blocking=True)
-def battery_level_schema(battery_level: pl.DataFrame) -> AssetCheckResult:
-    expected_schema = _TABLES['battery_level']['schema']
+def _make_asset_check(table_name: str, settings: Dict[str, Any]):
 
-    actual_schema = battery_level.schema
+    @dg.asset_check(asset=dg.AssetKey(["gadgetbridge", "bronze", table_name]), blocking=True)
+    def _asset_check(battery_level: pl.DataFrame) -> AssetCheckResult:
+        expected_schema = _TABLES[table_name]['schema']
 
-    if actual_schema != expected_schema:
-        differences = []
+        actual_schema = battery_level.schema
 
-        for column, expected_type in expected_schema.items():
-            actual_type = actual_schema.get(column)
-            if actual_type != expected_type:
-                differences.append(f"Column '{column}': expected {expected_type}, got {actual_type}")
+        if actual_schema != expected_schema:
+            differences = []
 
-        for column in actual_schema:
-            if column not in expected_schema:
-                differences.append(f"Unexpected column: '{column}'")
+            for column, expected_type in expected_schema.items():
+                actual_type = actual_schema.get(column)
+                if actual_type != expected_type:
+                    differences.append(f"Column '{column}': expected {expected_type}, got {actual_type}")
 
-        return AssetCheckResult(
-            passed=False,
-            description="Schema mismatch",
-            metadata={"differences": "\n".join(differences)},
-        )
+            for column in actual_schema:
+                if column not in expected_schema:
+                    differences.append(f"Unexpected column: '{column}'")
+
+            return AssetCheckResult(
+                passed=False,
+                description="Schema mismatch",
+                metadata={"differences": "\n".join(differences)},
+            )
+        else:
+            return AssetCheckResult(
+                passed=True
+            )
+
+    _asset_check.__name__ = "%s_schema_matches_expectations" % table_name
+
+    return _asset_check
+
+
+def _make_bronze(table_name: str, settings: Dict[str, str]):
+    _asset = _make_asset(table_name, settings)
+
+    if 'schema' in settings:
+        _check = _make_asset_check(table_name, settings)
     else:
-        return AssetCheckResult(
-            passed=True
-        )
+        _check = None
 
-_tables = [
-    _make_bronze_asset(table, settings)
-    for (table, settings) in _TABLES.items()
-]
+
+    return (_asset, _check)
+
+_tables = []
+_checks = []
+
+
+for (table, settings) in _TABLES.items():
+    t, c = _make_bronze(table, settings)
+    _tables.append(t)
+
+    if c is not None:
+        _checks.append(c)
+
 
 defs = Definitions(
     assets=_tables,
-    asset_checks=[battery_level_schema]
+    asset_checks=_checks
 )
