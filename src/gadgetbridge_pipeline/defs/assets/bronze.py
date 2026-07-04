@@ -230,11 +230,8 @@ def activity_heartrate_checks(huami_extended_activity_sample: pl.DataFrame) -> A
     }
 
     return AssetCheckResult(
-        passed=all(list(checks.values())),
-        metadata=checks.update({
-            "minimum": minimum,
-            "maximum": maximum,
-        })
+        passed=all(checks.values()),
+        metadata=checks | {"minimum": minimum, "maximum": maximum},
     )
 
 _checks.append(activity_heartrate_checks)
