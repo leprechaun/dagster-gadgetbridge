@@ -236,6 +236,127 @@ def activity_heartrate_checks(huami_extended_activity_sample: pl.DataFrame) -> A
 
 _checks.append(activity_heartrate_checks)
 
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"]),
+    blocking=True,
+    name="battery_level_range_checks",
+)
+def battery_level_checks(battery_level: pl.DataFrame) -> AssetCheckResult:
+    minimum = int(battery_level["LEVEL"].min())
+    maximum = int(battery_level["LEVEL"].max())
+    checks = {
+        "is_non_negative": minimum >= 0,
+        "is_at_most_100": maximum <= 100,
+    }
+    return AssetCheckResult(
+        passed=all(checks.values()),
+        metadata=checks | {"minimum": minimum, "maximum": maximum},
+    )
+
+_checks.append(battery_level_checks)
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "huami_spo2_sample"]),
+    blocking=True,
+    name="huami_spo2_sample_spo2_checks",
+)
+def spo2_checks(huami_spo2_sample: pl.DataFrame) -> AssetCheckResult:
+    minimum = int(huami_spo2_sample["SPO2"].min())
+    maximum = int(huami_spo2_sample["SPO2"].max())
+    checks = {
+        "is_at_least_70": minimum >= 70,
+        "is_at_most_100": maximum <= 100,
+    }
+    return AssetCheckResult(
+        passed=all(checks.values()),
+        metadata=checks | {"minimum": minimum, "maximum": maximum},
+    )
+
+_checks.append(spo2_checks)
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "generic_temperature_sample"]),
+    blocking=True,
+    name="generic_temperature_sample_temperature_checks",
+)
+def temperature_checks(generic_temperature_sample: pl.DataFrame) -> AssetCheckResult:
+    minimum = float(generic_temperature_sample["TEMPERATURE"].min())
+    maximum = float(generic_temperature_sample["TEMPERATURE"].max())
+    checks = {
+        "is_at_least_15": minimum >= 15.0,
+        "is_at_most_42": maximum <= 42.0,
+    }
+    return AssetCheckResult(
+        passed=all(checks.values()),
+        metadata=checks | {"minimum": minimum, "maximum": maximum},
+    )
+
+_checks.append(temperature_checks)
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"]),
+    blocking=True,
+    name="huami_stress_sample_stress_checks",
+)
+def stress_checks(huami_stress_sample: pl.DataFrame) -> AssetCheckResult:
+    minimum = int(huami_stress_sample["STRESS"].min())
+    maximum = int(huami_stress_sample["STRESS"].max())
+    checks = {
+        "is_at_least_1": minimum >= 1,
+        "is_at_most_100": maximum <= 100,
+    }
+    return AssetCheckResult(
+        passed=all(checks.values()),
+        metadata=checks | {"minimum": minimum, "maximum": maximum},
+    )
+
+_checks.append(stress_checks)
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "generic_hrv_value_sample"]),
+    blocking=True,
+    name="generic_hrv_value_sample_hrv_checks",
+)
+def hrv_checks(generic_hrv_value_sample: pl.DataFrame) -> AssetCheckResult:
+    minimum = int(generic_hrv_value_sample["VALUE"].min())
+    maximum = int(generic_hrv_value_sample["VALUE"].max())
+    checks = {
+        "is_positive": minimum > 0,
+        "is_at_most_300": maximum <= 300,
+    }
+    return AssetCheckResult(
+        passed=all(checks.values()),
+        metadata=checks | {"minimum": minimum, "maximum": maximum},
+    )
+
+_checks.append(hrv_checks)
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "huami_sleep_respiratory_rate_sample"]),
+    blocking=True,
+    name="huami_sleep_respiratory_rate_sample_rate_checks",
+)
+def respiratory_rate_checks(huami_sleep_respiratory_rate_sample: pl.DataFrame) -> AssetCheckResult:
+    minimum = int(huami_sleep_respiratory_rate_sample["RATE"].min())
+    maximum = int(huami_sleep_respiratory_rate_sample["RATE"].max())
+    checks = {
+        "is_at_least_4": minimum >= 4,
+        "is_at_most_60": maximum <= 60,
+    }
+    return AssetCheckResult(
+        passed=all(checks.values()),
+        metadata=checks | {"minimum": minimum, "maximum": maximum},
+    )
+
+_checks.append(respiratory_rate_checks)
+
+
 defs = Definitions(
     assets=_tables,
     asset_checks=_checks
