@@ -84,7 +84,11 @@ def _make_asset(table_name: str, settings: Dict[str, Any]):
 
 def _make_asset_check(table_name: str, settings: Dict[str, Any]):
 
-    @dg.asset_check(asset=dg.AssetKey(["gadgetbridge", "bronze", table_name]), blocking=True)
+    @dg.asset_check(
+        asset=dg.AssetKey(["gadgetbridge", "bronze", table_name]),
+        blocking=True,
+        name="%s_schema_matches_expectations" % table_name
+    )
     def _asset_check(battery_level: pl.DataFrame) -> AssetCheckResult:
         expected_schema = _TABLES[table_name]['schema']
 
@@ -111,8 +115,6 @@ def _make_asset_check(table_name: str, settings: Dict[str, Any]):
             return AssetCheckResult(
                 passed=True
             )
-
-    _asset_check.__name__ = "%s_schema_matches_expectations" % table_name
 
     return _asset_check
 
