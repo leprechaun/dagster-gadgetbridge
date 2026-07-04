@@ -1,3 +1,5 @@
+import os
+
 import boto3
 
 import dagster as dg
@@ -5,6 +7,7 @@ from dagster import Definitions, EnvVar, InputContext, OutputContext
 from dagster_deltalake import S3Config
 from dagster_deltalake_polars import DeltaLakePolarsIOManager
 
+_deltalake_bucket = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 
 class SqliteS3IOManager(dg.ConfigurableIOManager):
     """Round-trips a local SQLite file through S3 so downstream pods can load it."""
@@ -48,11 +51,11 @@ defs = Definitions(resources={
         key="GadgetBridge/Gadgetbridge.db",
     ),
     "sqlite_s3_io_manager": SqliteS3IOManager(
-        bucket="deltalake",
+        bucket=_deltalake_bucket,
         endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
     ),
     "deltalake_io_manager": DeltaLakePolarsIOManager(
-        root_uri="s3://deltalake/gadgetbridge/",
+        root_uri=f"s3://{_deltalake_bucket}/gadgetbridge/",
         storage_options=_s3_config,
         # no schema — key_prefix on each asset drives the subfolder
     ),
