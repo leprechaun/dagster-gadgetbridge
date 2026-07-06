@@ -91,6 +91,8 @@ def build_medicine_log(
 )
 def medicine_log(context) -> pl.DataFrame:
     context.log.info("Running medicine_log")
+    context.log.info("prescriptions: %s" % str(_PRESCRIPTIONS_PATH))
+    context.log.info("skips: %s" % str(_SKIPS_PATH))
     prescriptions = pl.read_csv(
         _PRESCRIPTIONS_PATH,
         schema_overrides={"start_date": pl.Date, "end_date": pl.Date, "dosage_mg": pl.Float64},
