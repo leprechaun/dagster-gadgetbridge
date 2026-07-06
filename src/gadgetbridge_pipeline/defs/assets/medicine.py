@@ -21,9 +21,6 @@ _EMPTY_SCHEMA = {
     "medicine": pl.String,
     "dosage_mg": pl.Float64,
     "taken": pl.Boolean,
-    "day_of_week": pl.Int8,
-    "is_weekend": pl.Boolean,
-    "adherence_streak": pl.Int32,
 }
 
 
@@ -52,32 +49,10 @@ def build_medicine_log(
         pl.DataFrame(rows)
         .sort("date")
         .with_columns(
-            (~pl.col("date").is_in(list(skip_dates))).alias("taken"),
-            pl.col("date").dt.weekday().cast(pl.Int8).alias("day_of_week"),
-            (pl.col("date").dt.weekday() >= 5).alias("is_weekend"),
+            (~pl.col("date").is_in(list(skip_dates))).alias("taken")
+        ).with_columns(
+            (pl.col("taken").cast(int) * pl.col("dosage_mg")).alias("effective_dosage")
         )
-    )
-
-    # Streak breaks when taken changes OR when dates are not consecutive (gap between prescriptions).
-    # Cast Date to Int32 (days since epoch) for safe consecutive-day arithmetic.
-    df = (
-        df.with_columns(
-            (
-                (pl.col("taken") != pl.col("taken").shift(1))
-                | (pl.col("date").cast(pl.Int32) != pl.col("date").shift(1).cast(pl.Int32) + 1)
-            )
-            .fill_null(True)
-            .cum_sum()
-            .alias("_streak_group")
-        )
-        .with_columns(
-            pl.when(pl.col("taken"))
-            .then(pl.col("taken").cast(pl.Int32).cum_sum().over("_streak_group"))
-            .otherwise(pl.lit(0))
-            .cast(pl.Int32)
-            .alias("adherence_streak")
-        )
-        .drop("_streak_group")
     )
 
     return df
