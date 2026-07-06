@@ -90,6 +90,7 @@ def build_medicine_log(
     description="Daily medication adherence log derived from prescriptions and skip records",
 )
 def medicine_log(context) -> pl.DataFrame:
+    context.log.info("Running medicine_log")
     prescriptions = pl.read_csv(
         _PRESCRIPTIONS_PATH,
         schema_overrides={"start_date": pl.Date, "end_date": pl.Date, "dosage_mg": pl.Float64},
