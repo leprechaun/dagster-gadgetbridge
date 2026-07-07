@@ -159,4 +159,43 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
     )
 
 
-defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after, steps_per_day, steps_vs_stress])
+@dg.asset(
+    group_name="gadgetbridge",
+    io_manager_key="deltalake_io_manager",
+    key_prefix=["gadgetbridge", "gold"],
+    ins={
+        "daily_heart_rate_distribution": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "daily_heart_rate_distribution"])),
+        "medicine_log": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description="Heart rate distribution normalized within each (medication_state × weekday/weekend) group",
+)
+def heart_rate_distribution_by_medication_and_weekday(
+    daily_heart_rate_distribution: pl.DataFrame,
+    medicine_log: pl.DataFrame,
+) -> pl.DataFrame:
+    medication_by_date = (
+        medicine_log
+        .filter(pl.col("taken"))
+        .group_by("date")
+        .agg(pl.col("medicine").sort().str.join(" + ").alias("medication_state"))
+    )
+
+    return (
+        daily_heart_rate_distribution
+        .join(medication_by_date, on="date", how="left")
+        .with_columns(
+            pl.col("medication_state").fill_null("sober"),
+            (pl.col("date").dt.weekday() >= 5).alias("is_weekend"),
+        )
+        .group_by(["heart_rate", "medication_state", "is_weekend"])
+        .agg(pl.col("sample_count").sum())
+        .with_columns(
+            (pl.col("sample_count") / pl.col("sample_count").sum().over(["medication_state", "is_weekend"]))
+            .alias("proportion")
+        )
+        .sort(["medication_state", "is_weekend", "heart_rate"])
+    )
+
+
+defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after, steps_per_day, steps_vs_stress, heart_rate_distribution_by_medication_and_weekday])
