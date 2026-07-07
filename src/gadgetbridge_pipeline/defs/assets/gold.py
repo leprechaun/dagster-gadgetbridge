@@ -8,40 +8,32 @@ from dagster import AssetExecutionContext, AutomationCondition, Definitions
     io_manager_key="deltalake_io_manager",
     key_prefix=["gadgetbridge", "gold"],
     ins={
-        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+        "daily_heart_rate_distribution": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "daily_heart_rate_distribution"])),
     },
     automation_condition=AutomationCondition.eager(),
 )
-def weekday_heart_rate_distribution_before_and_after(context: AssetExecutionContext, activity: pl.DataFrame) -> pl.DataFrame:
-    # MAGIC DATE
-    START_DATE = datetime.date(2026,5,24)
-    BIN_SIZE = 5
+def weekday_heart_rate_distribution_before_and_after(
+    context: AssetExecutionContext,
+    daily_heart_rate_distribution: pl.DataFrame,
+) -> pl.DataFrame:
+    START_DATE = datetime.date(2026, 5, 24)
 
-    context.log.info("Shape: %s:%s" % (activity.shape[0], activity.shape[1]))
-    context.log.info("Columns: " + ",".join(activity.columns))
-
-    columns = ["TIMESTAMP","RAW_INTENSITY", "HEART_RATE", "STEPS"]
-    return activity.select(columns).with_columns(
-        (pl.col("TIMESTAMP") > START_DATE).alias("after"),
-        pl.col("TIMESTAMP").dt.weekday().alias("weekday"),
-    ).filter(
-        pl.col("weekday") < 6
-    ).with_columns(
-        pl.col("HEART_RATE") // BIN_SIZE * BIN_SIZE
-    ).group_by(
-        ['after', 'HEART_RATE']
-    ).agg(
-        pl.len()
-    ).pivot(
-        ['after'], values=['len']
-    ).with_columns(
-        pl.col('false') / pl.col('false').sum(),
-        pl.col('true') / pl.col('true').sum()
-    ).unpivot(
-        index='HEART_RATE'
-    ).rename({"variable":"after"}).filter(
-        pl.col("HEART_RATE") < 160,
-        pl.col("HEART_RATE") >= 40
+    return (
+        daily_heart_rate_distribution
+        .with_columns(
+            pl.col("date").dt.weekday().alias("weekday"),
+            (pl.col("date") > START_DATE).alias("after"),
+        )
+        .filter(pl.col("weekday") < 6)
+        .group_by(["after", "heart_rate"])
+        .agg(pl.col("sample_count").sum())
+        .pivot("after", values="sample_count")
+        .with_columns(
+            pl.col("false") / pl.col("false").sum(),
+            pl.col("true") / pl.col("true").sum(),
+        )
+        .unpivot(index="heart_rate")
+        .rename({"variable": "after"})
     )
 
 @dg.asset(

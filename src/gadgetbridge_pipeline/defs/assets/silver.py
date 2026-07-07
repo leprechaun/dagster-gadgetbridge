@@ -61,4 +61,29 @@ def per_minute_health_metrics(
     )
 
 
-defs = Definitions(assets=[per_minute_health_metrics])
+@dg.asset(
+    group_name="gadgetbridge",
+    io_manager_key="deltalake_io_manager",
+    key_prefix=["gadgetbridge", "silver"],
+    ins={
+        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description="Daily distribution of binned heart rates (5 bpm bins, 40-160 range)",
+)
+def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
+    BIN_SIZE = 5
+    return (
+        activity
+        .select(["TIMESTAMP", "HEART_RATE"])
+        .with_columns(
+            pl.col("TIMESTAMP").dt.date().alias("date"),
+            (pl.col("HEART_RATE") // BIN_SIZE * BIN_SIZE).cast(pl.Int32).alias("heart_rate"),
+        )
+        .group_by(["date", "heart_rate"])
+        .agg(pl.len().alias("sample_count"))
+        .sort(["date", "heart_rate"])
+    )
+
+
+defs = Definitions(assets=[per_minute_health_metrics, daily_heart_rate_distribution])
