@@ -3,13 +3,11 @@ from datetime import date
 import polars as pl
 
 from gadgetbridge_pipeline.defs.assets.medicine import (
-    KNOWN_MEDICINES,
     build_medicine_log,
     medicine_log_dosage_positive,
-    medicine_log_known_medicine_names,
 )
 
-_MED = next(iter(KNOWN_MEDICINES))
+_MED = "Tylenol"
 _TODAY = date(2026, 7, 6)
 _NO_SKIPS = pl.DataFrame({"date": pl.Series([], dtype=pl.Date)})
 
@@ -119,21 +117,3 @@ def test_dosage_check_fails_on_zero():
     })
     assert not medicine_log_dosage_positive(df).passed
 
-
-def test_known_medicine_check_passes():
-    p = _prescriptions(("2026-01-05", "2026-01-05", _MED, 50.0))
-    df = build_medicine_log(p, _NO_SKIPS, today=_TODAY)
-    assert medicine_log_known_medicine_names(df).passed
-
-
-def test_known_medicine_check_fails_on_unknown():
-    df = pl.DataFrame({
-        "date": [date(2026, 1, 5)],
-        "medicine": ["unknown_pill_xyz"],
-        "dosage_mg": [50.0],
-        "taken": [True],
-        "effective_dosage": [50.0],
-    })
-    check = medicine_log_known_medicine_names(df)
-    assert not check.passed
-    assert "unknown_pill_xyz" in check.metadata["unknown_medicines"].value

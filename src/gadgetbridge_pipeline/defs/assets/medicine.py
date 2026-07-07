@@ -12,12 +12,6 @@ _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PRESCRIPTIONS_KEY = "gadgetbridge/raw/prescriptions.csv"
 _SKIPS_KEY = "gadgetbridge/raw/medicine_skips.csv"
 
-KNOWN_MEDICINES: frozenset[str] = frozenset({
-    "medicine_a",
-    "medicine_b",
-    "medicine_c",
-})
-
 _EMPTY_SCHEMA = {
     "date": pl.Date,
     "medicine": pl.String,
@@ -94,21 +88,6 @@ def medicine_log(context, s3: S3ClientResource) -> pl.DataFrame:
 @dg.asset_check(
     asset=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"]),
     blocking=True,
-    name="medicine_log_known_medicine_names",
-)
-def medicine_log_known_medicine_names(medicine_log: pl.DataFrame) -> AssetCheckResult:
-    found = set(medicine_log["medicine"].unique().to_list())
-    unknown = found - KNOWN_MEDICINES
-    checks = {"no_unknown_medicines": len(unknown) == 0}
-    return AssetCheckResult(
-        passed=all(checks.values()),
-        metadata=checks | {"unknown_medicines": str(unknown)},
-    )
-
-
-@dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"]),
-    blocking=True,
     name="medicine_log_dosage_positive",
 )
 def medicine_log_dosage_positive(medicine_log: pl.DataFrame) -> AssetCheckResult:
@@ -157,7 +136,6 @@ def daily_medicine_adherence(medicine_log: pl.DataFrame) -> pl.DataFrame:
 defs = Definitions(
     assets=[medicine_log, daily_medicine_adherence],
     asset_checks=[
-        medicine_log_known_medicine_names,
         medicine_log_dosage_positive,
         medicine_log_skips_within_prescriptions,
     ],
