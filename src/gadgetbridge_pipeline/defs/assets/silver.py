@@ -38,7 +38,10 @@ def per_minute_health_metrics(
 ) -> pl.DataFrame:
     base = (
         activity
-        .with_columns(pl.col("TIMESTAMP").dt.truncate("1m").alias("MINUTE"))
+        .with_columns(
+            pl.col("TIMESTAMP").dt.truncate("1m").alias("MINUTE"),
+            pl.when(pl.col("HEART_RATE") == 255).then(None).otherwise(pl.col("HEART_RATE")).alias("HEART_RATE"),
+        )
         .drop(["TIMESTAMP", "UNKNOWN1"])
     )
 
@@ -76,6 +79,7 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     return (
         activity
         .select(["TIMESTAMP", "HEART_RATE"])
+        .filter(pl.col("HEART_RATE") != 255)
         .with_columns(
             pl.col("TIMESTAMP").dt.date().alias("date"),
             (pl.col("HEART_RATE") // BIN_SIZE * BIN_SIZE).cast(pl.Int32).alias("heart_rate"),
