@@ -7,6 +7,8 @@ from dagster import Definitions, EnvVar, InputContext, OutputContext
 from dagster_deltalake import S3Config
 from dagster_deltalake_polars import DeltaLakePolarsIOManager
 
+from dagster_openlineage import openlineage_sensor
+
 _deltalake_bucket = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 
 class SqliteS3IOManager(dg.ConfigurableIOManager):
@@ -44,19 +46,22 @@ class S3ClientResource(dg.ConfigurableResource):
 
 _s3_config = S3Config(allow_unsafe_rename=True, endpoint=EnvVar("AWS_ENDPOINT_URL_S3"))
 
-defs = Definitions(resources={
-    "s3": S3ClientResource(
-        endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
-        bucket="android-backups",
-        key="GadgetBridge/Gadgetbridge.db",
-    ),
-    "sqlite_s3_io_manager": SqliteS3IOManager(
-        bucket=_deltalake_bucket,
-        endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
-    ),
-    "deltalake_io_manager": DeltaLakePolarsIOManager(
-        root_uri=f"s3://{_deltalake_bucket}/gadgetbridge/",
-        storage_options=_s3_config,
-        # no schema — key_prefix on each asset drives the subfolder
-    ),
-})
+defs = Definitions(
+    sensors=[openlineage_sensor(include_asset_events=True)],
+    resources={
+        "s3": S3ClientResource(
+            endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
+            bucket="android-backups",
+            key="GadgetBridge/Gadgetbridge.db",
+        ),
+        "sqlite_s3_io_manager": SqliteS3IOManager(
+            bucket=_deltalake_bucket,
+            endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
+        ),
+        "deltalake_io_manager": DeltaLakePolarsIOManager(
+            root_uri=f"s3://{_deltalake_bucket}/gadgetbridge/",
+            storage_options=_s3_config,
+            # no schema — key_prefix on each asset drives the subfolder
+        )
+    }
+)
