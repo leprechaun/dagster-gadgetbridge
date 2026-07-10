@@ -95,6 +95,5 @@ jobs:
 
       - name: Get stuff
         run: |
-          kubectl set image -n dagster deployment/dagster-dagster-user-deployments-gadgetbridge dagster-user-deployments=ghcr.io/${{ github.repository }}:${{ github.run_number }}
-          sleep 3
-          kubectl get pods -n dagster
+          wget https://get.helm.sh/helm-v3.12.3-linux-amd64.tar.gz
+          tar zxvf helm-*
