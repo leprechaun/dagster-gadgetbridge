@@ -186,7 +186,7 @@ def heart_rate_distribution_by_medication_and_weekday(
         .join(medication_by_date, on="date", how="left")
         .with_columns(
             pl.col("medication_state").fill_null("sober"),
-            (pl.col("date").dt.weekday() >= 5).alias("is_weekend"),
+            (pl.col("date").dt.weekday() >= 6).alias("is_weekend"),
         )
         .group_by(["heart_rate", "medication_state", "is_weekend"])
         .agg(pl.col("sample_count").sum())
