@@ -102,6 +102,6 @@ jobs:
 
           sed -i s/VERSION/${{ github.run_number }}/g helm-charts/values/prod.yaml
 
-          helm upgrade --install -n dagster
+          helm upgrade --install -n dagster \
             gadgetbridge dagster/dagster-user-deployments \
             -f helm-charts/values/prod.yaml
