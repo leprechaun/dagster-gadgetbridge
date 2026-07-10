@@ -97,3 +97,7 @@ jobs:
         run: |
           wget https://get.helm.sh/helm-v3.12.3-linux-amd64.tar.gz
           tar zxvf helm-*
+          mv linux-amd64/helm /usr/local/bin/
+          chmod 755 /usr/local/bin/helm
+
+          helm list -n dagster
