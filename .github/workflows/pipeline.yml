@@ -82,6 +82,7 @@ jobs:
           sudo ip link set up dev wg0
 
           sleep 3
+          ping -c 2 10.99.3.1
 
           sudo ip route
 
