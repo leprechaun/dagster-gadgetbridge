@@ -81,6 +81,8 @@ jobs:
 
           sudo ip link set up dev wg0
 
+          sleep 3
+
           sudo ip route
 
           sudo wg show
