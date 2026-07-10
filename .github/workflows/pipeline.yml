@@ -93,15 +93,18 @@ jobs:
           mkdir -p $HOME/.kube
           echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > $HOME/.kube/config
 
-      - name: Get stuff
+      - name: Install helm
         run: |
-          wget https://get.helm.sh/helm-v3.12.3-linux-amd64.tar.gz
+          wget -q https://get.helm.sh/helm-v3.12.3-linux-amd64.tar.gz
           tar zxvf helm-*.tar.gz
           mv linux-amd64/helm /usr/local/bin/
           chmod 755 /usr/local/bin/helm
 
+      - name: Helm upgrade
+        run: |
           sed -i s/VERSION/${{ github.run_number }}/g helm-charts/values/prod.yaml
 
+          helm repo add dagster https://dagster-io.github.io/helm
           helm upgrade --install -n dagster \
             gadgetbridge dagster/dagster-user-deployments \
             -f helm-charts/values/prod.yaml
