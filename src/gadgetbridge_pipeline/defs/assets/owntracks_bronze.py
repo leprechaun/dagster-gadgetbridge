@@ -4,15 +4,40 @@ import os
 import boto3
 import polars as pl
 import dagster as dg
-from dagster import Definitions, AssetExecutionContext
+from dagster import Definitions, AssetExecutionContext, MonthlyPartitionsDefinition
 
 _BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PREFIX = "owntracks/raw/rec/"
+
+owntracks_partitions = MonthlyPartitionsDefinition(start_date="2020-01-01")
+
+_RAW_SCHEMA = pl.Schema({
+    "id":         pl.String,
+    "user":       pl.String,
+    "device":     pl.String,
+    "arrived_at": pl.String,
+    "tst":        pl.Int64,
+    "created_at": pl.Int64,
+    "lat":        pl.Float64,
+    "lon":        pl.Float64,
+    "alt":        pl.Int64,
+    "acc":        pl.Int64,
+    "vac":        pl.Int64,
+    "batt":       pl.Int64,
+    "bs":         pl.Int64,
+    "conn":       pl.String,
+    "ssid":       pl.String,
+    "bssid":      pl.String,
+    "tid":        pl.String,
+    "source":     pl.String,
+    "m":          pl.Int64,
+})
 
 _SCHEMA = pl.Schema({
     "id":         pl.String,
     "user":       pl.String,
     "device":     pl.String,
+    "year_month": pl.String,
     "arrived_at": pl.Datetime(time_unit="us", time_zone="UTC"),
     "timestamp":  pl.Datetime(time_unit="us", time_zone="UTC"),
     "created_at": pl.Datetime(time_unit="us", time_zone="UTC"),
@@ -77,46 +102,12 @@ def parse_rec_lines(lines: list[str], user: str, device: str) -> list[dict]:
     return records
 
 
-@dg.asset(
-    group_name="owntracks",
-    io_manager_key="owntracks_deltalake_io_manager",
-    key_prefix=["owntracks", "bronze"],
-    description="Parsed OwnTracks location records from all .rec files under s3://deltalake/owntracks/raw/rec/",
-)
-def location_records(context: AssetExecutionContext) -> pl.DataFrame:
-    client = _s3_client()
-    paginator = client.get_paginator("list_objects_v2")
-
-    all_records: list[dict] = []
-    file_count = 0
-
-    for page in paginator.paginate(Bucket=_BUCKET, Prefix=_PREFIX):
-        for obj in page.get("Contents", []):
-            key: str = obj["Key"]
-            if not key.endswith(".rec"):
-                continue
-            # Path structure: owntracks/raw/rec/{user}/{device}/{YEAR}-{MONTH}.rec
-            parts = key.split("/")
-            if len(parts) < 6:
-                context.log.warning(f"Skipping unexpected key shape: {key}")
-                continue
-            user, device = parts[3], parts[4]
-
-            body = client.get_object(Bucket=_BUCKET, Key=key)["Body"].read().decode("utf-8")
-            records = parse_rec_lines(body.splitlines(), user, device)
-            all_records.extend(records)
-            file_count += 1
-            context.log.info(f"{key}: {len(records)} location records")
-
-    context.log.info(f"Total: {len(all_records)} records from {file_count} files")
-
-    if not all_records:
-        return pl.DataFrame(schema=_SCHEMA)
-
-    df = (
-        pl.DataFrame(all_records)
+def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
+    return (
+        pl.DataFrame(records, schema=_RAW_SCHEMA)
         .rename({"tst": "timestamp"})
         .with_columns(
+            pl.lit(partition_key).alias("year_month"),
             pl.from_epoch(pl.col("timestamp").cast(pl.Int64), time_unit="s")
             .dt.replace_time_zone("UTC")
             .alias("timestamp"),
@@ -129,7 +120,49 @@ def location_records(context: AssetExecutionContext) -> pl.DataFrame:
         )
         .select(list(_SCHEMA.keys()))
     )
-    return df
+
+
+@dg.asset(
+    partitions_def=owntracks_partitions,
+    group_name="owntracks",
+    io_manager_key="owntracks_deltalake_io_manager",
+    key_prefix=["owntracks", "bronze"],
+    metadata={"partition_expr": "year_month"},
+    description="Parsed OwnTracks location records, written to Delta Lake via partition_expr on year_month.",
+)
+def location_records(context: AssetExecutionContext) -> pl.DataFrame:
+    # partition_key is "2026-07-01"; filenames use "2026-07"
+    partition_key = context.partition_key
+    year_month = partition_key[:7]
+
+    client = _s3_client()
+    paginator = client.get_paginator("list_objects_v2")
+
+    all_records: list[dict] = []
+    files_read: list[str] = []
+
+    for page in paginator.paginate(Bucket=_BUCKET, Prefix=_PREFIX):
+        for obj in page.get("Contents", []):
+            key: str = obj["Key"]
+            if not key.endswith(f"{year_month}.rec"):
+                continue
+            parts = key.split("/")
+            if len(parts) < 6:
+                context.log.warning(f"Skipping unexpected key shape: {key}")
+                continue
+            user, device = parts[3], parts[4]
+            body = client.get_object(Bucket=_BUCKET, Key=key)["Body"].read().decode("utf-8")
+            records = parse_rec_lines(body.splitlines(), user, device)
+            all_records.extend(records)
+            files_read.append(key)
+            context.log.info(f"{key}: {len(records)} location records")
+
+    context.log.info(f"Total: {len(all_records)} records from {len(files_read)} file(s)")
+
+    if not all_records:
+        return pl.DataFrame(schema=_SCHEMA)
+
+    return _transform(all_records, partition_key)
 
 
 defs = Definitions(assets=[location_records])

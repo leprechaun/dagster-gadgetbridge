@@ -2,8 +2,15 @@
 owntracks_s3_sensor
 --------------------
 Watches s3://deltalake/owntracks/raw/rec/ for new or changed .rec files.
-Uses a JSON dict cursor of {s3_key: etag} to detect any change.
-A run is only requested when at least one file appears or its ETag changes.
+
+Cursor: JSON dict of {s3_key: etag} for all known .rec files.
+
+Files are grouped by month (derived from the filename). When any file within
+a month changes or appears, that month's partition is triggered. This means
+one run per affected month, processing all user/device files for that month.
+
+run_key = "{partition_key}::{etag_hash}" so a changed ETag for any file in
+a month produces a new run for that partition.
 """
 
 from __future__ import annotations
@@ -11,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections import defaultdict
 
 import boto3
 from botocore.exceptions import ClientError
@@ -33,9 +41,19 @@ def _s3_client():
     return boto3.client("s3", endpoint_url=os.environ.get("AWS_ENDPOINT_URL_S3"))
 
 
+def _month_from_key(key: str) -> str:
+    """'owntracks/raw/rec/alice/phone/2026-07.rec' -> '2026-07'"""
+    return key.split("/")[-1].removesuffix(".rec")
+
+
+def _partition_key(year_month: str) -> str:
+    """'2026-07' -> '2026-07-01' (Dagster monthly partition key format)"""
+    return f"{year_month}-01"
+
+
 @sensor(
     name="owntracks_s3_sensor",
-    description="Triggers owntracks/bronze/location_records when .rec files in S3 change.",
+    description="Triggers monthly partition runs when .rec files in S3 change.",
     minimum_interval_seconds=300,
     default_status=DefaultSensorStatus.RUNNING,
     asset_selection=AssetSelection.assets(
@@ -65,32 +83,39 @@ def owntracks_s3_sensor(context: SensorEvaluationContext):
         except (json.JSONDecodeError, ValueError):
             pass
 
-    new_keys = set(current) - set(previous)
-    changed_keys = {k for k in current if k in previous and current[k] != previous[k]}
+    # Group file ETags by month
+    current_by_month: dict[str, dict[str, str]] = defaultdict(dict)
+    for key, etag in current.items():
+        current_by_month[_month_from_key(key)][key] = etag
 
-    if not new_keys and not changed_keys:
+    previous_by_month: dict[str, dict[str, str]] = defaultdict(dict)
+    for key, etag in previous.items():
+        previous_by_month[_month_from_key(key)][key] = etag
+
+    affected_months = [
+        month for month, files in current_by_month.items()
+        if files != previous_by_month.get(month)
+    ]
+
+    if not affected_months:
         yield SkipReason(
             f"No changes detected across {len(current)} OwnTracks .rec file(s)."
         )
         return
 
-    context.log.info(
-        f"OwnTracks S3 change detected — new={len(new_keys)}, changed={len(changed_keys)}"
-    )
+    context.log.info(f"Affected months: {sorted(affected_months)}")
     context.update_cursor(json.dumps(current))
 
-    run_key = hashlib.md5(
-        json.dumps(sorted(current.items())).encode()
-    ).hexdigest()
-
-    yield RunRequest(
-        run_key=run_key,
-        tags={
-            "triggered_by": "owntracks_s3_sensor",
-            "new_files": str(len(new_keys)),
-            "changed_files": str(len(changed_keys)),
-        },
-    )
+    for month in sorted(affected_months):
+        pk = _partition_key(month)
+        etag_hash = hashlib.md5(
+            json.dumps(sorted(current_by_month[month].items())).encode()
+        ).hexdigest()
+        yield RunRequest(
+            partition_key=pk,
+            run_key=f"{pk}::{etag_hash}",
+            tags={"triggered_by": "owntracks_s3_sensor"},
+        )
 
 
 defs = Definitions(sensors=[owntracks_s3_sensor])
