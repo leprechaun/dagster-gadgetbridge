@@ -62,9 +62,14 @@ def _s3_client():
     return boto3.client("s3", endpoint_url=os.environ.get("AWS_ENDPOINT_URL_S3"))
 
 
-def parse_rec_lines(lines: list[str], user: str, device: str) -> list[dict]:
-    """Parse lines from a .rec file into raw dicts. Only _type=location entries are kept."""
+def parse_rec_lines(lines: list[str], user: str, device: str) -> tuple[list[dict], list[str]]:
+    """Parse lines from a .rec file into raw dicts. Only _type=location entries are kept.
+
+    Returns (records, dropped) where dropped is a list of raw arrived_at strings that
+    could not be parsed (e.g. null-byte-corrupted lines).
+    """
     records = []
+    dropped = []
     for line in lines:
         line = line.strip()
         if not line:
@@ -79,11 +84,16 @@ def parse_rec_lines(lines: list[str], user: str, device: str) -> list[dict]:
             continue
         if payload.get("_type") != "location":
             continue
+        try:
+            arrived_at = datetime.fromisoformat(arrived_at_str.strip(" \t\r\n\x00"))
+        except ValueError:
+            dropped.append(repr(arrived_at_str))
+            continue
         records.append({
             "id":         payload.get("_id"),
             "user":       user,
             "device":     device,
-            "arrived_at": datetime.fromisoformat(arrived_at_str.strip()),
+            "arrived_at": arrived_at,
             "tst":        payload.get("tst"),
             "created_at": payload.get("created_at"),
             "lat":        payload.get("lat"),
@@ -100,7 +110,7 @@ def parse_rec_lines(lines: list[str], user: str, device: str) -> list[dict]:
             "source":     payload.get("source"),
             "m":          payload.get("m"),
         })
-    return records
+    return records, dropped
 
 
 def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
@@ -139,6 +149,7 @@ def location_records(context: AssetExecutionContext) -> pl.DataFrame:
     paginator = client.get_paginator("list_objects_v2")
 
     all_records: list[dict] = []
+    all_dropped: list[str] = []
     files_read: list[str] = []
 
     for page in paginator.paginate(Bucket=_BUCKET, Prefix=_PREFIX):
@@ -152,12 +163,22 @@ def location_records(context: AssetExecutionContext) -> pl.DataFrame:
                 continue
             user, device = parts[3], parts[4]
             body = client.get_object(Bucket=_BUCKET, Key=key)["Body"].read().decode("utf-8")
-            records = parse_rec_lines(body.splitlines(), user, device)
+            records, dropped = parse_rec_lines(body.splitlines(), user, device)
             all_records.extend(records)
+            all_dropped.extend(dropped)
             files_read.append(key)
-            context.log.info(f"{key}: {len(records)} location records")
+            if dropped:
+                for raw in dropped:
+                    context.log.warning(f"{key}: dropped record with unparseable arrived_at: {raw}")
+            context.log.info(f"{key}: {len(records)} location records, {len(dropped)} dropped")
 
-    context.log.info(f"Total: {len(all_records)} records from {len(files_read)} file(s)")
+    context.log.info(f"Total: {len(all_records)} records, {len(all_dropped)} dropped, from {len(files_read)} file(s)")
+
+    context.add_output_metadata({
+        "records": len(all_records),
+        "dropped": len(all_dropped),
+        "files": len(files_read),
+    })
 
     if not all_records:
         return pl.DataFrame(schema=_SCHEMA)
