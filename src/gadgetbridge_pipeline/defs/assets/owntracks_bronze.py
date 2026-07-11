@@ -38,7 +38,7 @@ _SCHEMA = pl.Schema({
     "id":         pl.String,
     "user":       pl.String,
     "device":     pl.String,
-    "year_month": pl.String,
+    "year_month": pl.Date,
     "arrived_at": pl.Datetime(time_unit="us", time_zone="UTC"),
     "timestamp":  pl.Datetime(time_unit="us", time_zone="UTC"),
     "created_at": pl.Datetime(time_unit="us", time_zone="UTC"),
@@ -118,7 +118,7 @@ def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
         pl.DataFrame(records, schema=_RAW_SCHEMA)
         .rename({"tst": "timestamp"})
         .with_columns(
-            pl.lit(partition_key).alias("year_month"),
+            pl.lit(partition_key).cast(pl.Date).alias("year_month"),
             pl.from_epoch(pl.col("timestamp").cast(pl.Int64), time_unit="s")
             .dt.replace_time_zone("UTC")
             .alias("timestamp"),
