@@ -9,7 +9,7 @@ from dagster import Definitions, AssetExecutionContext, MonthlyPartitionsDefinit
 _BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PREFIX = "owntracks/raw/rec/"
 
-owntracks_partitions = MonthlyPartitionsDefinition(start_date="2020-01-01")
+owntracks_partitions = MonthlyPartitionsDefinition(start_date="2020-01-01", end_offset=1)
 
 _RAW_SCHEMA = pl.Schema({
     "id":         pl.String,
