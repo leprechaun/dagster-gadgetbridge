@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from gadgetbridge_pipeline.defs.assets.owntracks_bronze import parse_rec_lines
 
 
@@ -24,7 +25,7 @@ def test_parse_basic_location():
 def test_parse_arrived_at():
     lines = [_line(1782872268, 1.0, 2.0, arrived_at="2026-07-01T02:17:48Z")]
     records = parse_rec_lines(lines, user="alice", device="phone")
-    assert records[0]["arrived_at"] == "2026-07-01T02:17:48Z"
+    assert records[0]["arrived_at"] == datetime(2026, 7, 1, 2, 17, 48, tzinfo=timezone.utc)
 
 
 def test_parse_id_and_created_at():
