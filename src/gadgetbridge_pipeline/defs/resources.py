@@ -62,6 +62,10 @@ defs = Definitions(
             root_uri=f"s3://{_deltalake_bucket}/gadgetbridge/",
             storage_options=_s3_config,
             # no schema — key_prefix on each asset drives the subfolder
-        )
+        ),
+        "owntracks_deltalake_io_manager": DeltaLakePolarsIOManager(
+            root_uri=f"s3://{_deltalake_bucket}/owntracks/",
+            storage_options=_s3_config,
+        ),
     }
 )

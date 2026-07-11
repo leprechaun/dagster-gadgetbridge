@@ -1,0 +1,135 @@
+import json
+import os
+
+import boto3
+import polars as pl
+import dagster as dg
+from dagster import Definitions, AssetExecutionContext
+
+_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
+_PREFIX = "owntracks/raw/rec/"
+
+_SCHEMA = pl.Schema({
+    "id":         pl.String,
+    "user":       pl.String,
+    "device":     pl.String,
+    "arrived_at": pl.Datetime(time_unit="us", time_zone="UTC"),
+    "timestamp":  pl.Datetime(time_unit="us", time_zone="UTC"),
+    "created_at": pl.Datetime(time_unit="us", time_zone="UTC"),
+    "lat":        pl.Float64,
+    "lon":        pl.Float64,
+    "alt":        pl.Int64,
+    "acc":        pl.Int64,
+    "vac":        pl.Int64,
+    "batt":       pl.Int64,
+    "bs":         pl.Int64,
+    "conn":       pl.String,
+    "ssid":       pl.String,
+    "bssid":      pl.String,
+    "tid":        pl.String,
+    "source":     pl.String,
+    "m":          pl.Int64,
+})
+
+
+def _s3_client():
+    return boto3.client("s3", endpoint_url=os.environ.get("AWS_ENDPOINT_URL_S3"))
+
+
+def parse_rec_lines(lines: list[str], user: str, device: str) -> list[dict]:
+    """Parse lines from a .rec file into raw dicts. Only _type=location entries are kept."""
+    records = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("\t", 2)
+        if len(parts) < 3:
+            continue
+        arrived_at_str, _, json_str = parts
+        try:
+            payload = json.loads(json_str)
+        except json.JSONDecodeError:
+            continue
+        if payload.get("_type") != "location":
+            continue
+        records.append({
+            "id":         payload.get("_id"),
+            "user":       user,
+            "device":     device,
+            "arrived_at": arrived_at_str.strip(),
+            "tst":        payload.get("tst"),
+            "created_at": payload.get("created_at"),
+            "lat":        payload.get("lat"),
+            "lon":        payload.get("lon"),
+            "alt":        payload.get("alt"),
+            "acc":        payload.get("acc"),
+            "vac":        payload.get("vac"),
+            "batt":       payload.get("batt"),
+            "bs":         payload.get("bs"),
+            "conn":       payload.get("conn"),
+            "ssid":       payload.get("SSID"),
+            "bssid":      payload.get("BSSID"),
+            "tid":        payload.get("tid"),
+            "source":     payload.get("source"),
+            "m":          payload.get("m"),
+        })
+    return records
+
+
+@dg.asset(
+    group_name="owntracks",
+    io_manager_key="owntracks_deltalake_io_manager",
+    key_prefix=["owntracks", "bronze"],
+    description="Parsed OwnTracks location records from all .rec files under s3://deltalake/owntracks/raw/rec/",
+)
+def location_records(context: AssetExecutionContext) -> pl.DataFrame:
+    client = _s3_client()
+    paginator = client.get_paginator("list_objects_v2")
+
+    all_records: list[dict] = []
+    file_count = 0
+
+    for page in paginator.paginate(Bucket=_BUCKET, Prefix=_PREFIX):
+        for obj in page.get("Contents", []):
+            key: str = obj["Key"]
+            if not key.endswith(".rec"):
+                continue
+            # Path structure: owntracks/raw/rec/{user}/{device}/{YEAR}-{MONTH}.rec
+            parts = key.split("/")
+            if len(parts) < 6:
+                context.log.warning(f"Skipping unexpected key shape: {key}")
+                continue
+            user, device = parts[3], parts[4]
+
+            body = client.get_object(Bucket=_BUCKET, Key=key)["Body"].read().decode("utf-8")
+            records = parse_rec_lines(body.splitlines(), user, device)
+            all_records.extend(records)
+            file_count += 1
+            context.log.info(f"{key}: {len(records)} location records")
+
+    context.log.info(f"Total: {len(all_records)} records from {file_count} files")
+
+    if not all_records:
+        return pl.DataFrame(schema=_SCHEMA)
+
+    df = (
+        pl.DataFrame(all_records)
+        .rename({"tst": "timestamp"})
+        .with_columns(
+            pl.from_epoch(pl.col("timestamp").cast(pl.Int64), time_unit="s")
+            .dt.replace_time_zone("UTC")
+            .alias("timestamp"),
+            pl.from_epoch(pl.col("created_at").cast(pl.Int64), time_unit="s")
+            .dt.replace_time_zone("UTC")
+            .alias("created_at"),
+            pl.col("arrived_at")
+            .str.to_datetime(format="%Y-%m-%dT%H:%M:%SZ", time_zone="UTC")
+            .alias("arrived_at"),
+        )
+        .select(list(_SCHEMA.keys()))
+    )
+    return df
+
+
+defs = Definitions(assets=[location_records])
