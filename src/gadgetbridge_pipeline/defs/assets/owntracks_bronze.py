@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 
 import boto3
 import polars as pl
@@ -15,7 +16,7 @@ _RAW_SCHEMA = pl.Schema({
     "id":         pl.String,
     "user":       pl.String,
     "device":     pl.String,
-    "arrived_at": pl.String,
+    "arrived_at": pl.Datetime(time_unit="us", time_zone="UTC"),
     "tst":        pl.Int64,
     "created_at": pl.Int64,
     "lat":        pl.Float64,
@@ -82,7 +83,7 @@ def parse_rec_lines(lines: list[str], user: str, device: str) -> list[dict]:
             "id":         payload.get("_id"),
             "user":       user,
             "device":     device,
-            "arrived_at": arrived_at_str.strip(),
+            "arrived_at": datetime.fromisoformat(arrived_at_str.strip()),
             "tst":        payload.get("tst"),
             "created_at": payload.get("created_at"),
             "lat":        payload.get("lat"),
@@ -114,11 +115,7 @@ def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
             pl.from_epoch(pl.col("created_at").cast(pl.Int64), time_unit="s")
             .dt.replace_time_zone("UTC")
             .alias("created_at"),
-            pl.col("arrived_at")
-            .str.strip_chars_end("Z")
-            .str.to_datetime(format="%Y-%m-%dT%H:%M:%S%.f", time_unit="us")
-            .dt.replace_time_zone("UTC")
-            .alias("arrived_at"),
+            pl.col("arrived_at").dt.convert_time_zone("UTC").alias("arrived_at"),
         )
         .select(list(_SCHEMA.keys()))
     )
