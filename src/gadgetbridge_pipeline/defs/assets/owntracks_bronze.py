@@ -128,6 +128,7 @@ def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
     io_manager_key="owntracks_deltalake_io_manager",
     key_prefix=["owntracks", "bronze"],
     metadata={"partition_expr": "year_month"},
+    op_tags={"dagster/concurrency_key": "owntracks_deltalake"},
     description="Parsed OwnTracks location records, written to Delta Lake via partition_expr on year_month.",
 )
 def location_records(context: AssetExecutionContext) -> pl.DataFrame:
