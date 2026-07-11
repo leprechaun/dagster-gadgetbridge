@@ -16,7 +16,7 @@ The pipeline follows a medallion architecture: **raw → bronze → silver → g
 
 | Asset | Description |
 |---|---|
-| `gadgetbridge_db_file` | Downloads the SQLite database from S3. Re-downloaded only when the ETag changes. |
+| `gadgetbridge_db_file` | Downloads the SQLite database from S3. Re-downloaded only when the ETag changes |
 
 ### Bronze
 
