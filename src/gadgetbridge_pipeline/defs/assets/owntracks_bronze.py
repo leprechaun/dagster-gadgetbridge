@@ -115,7 +115,9 @@ def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
             .dt.replace_time_zone("UTC")
             .alias("created_at"),
             pl.col("arrived_at")
-            .str.to_datetime(format="%Y-%m-%dT%H:%M:%SZ", time_zone="UTC")
+            .str.strip_chars_end("Z")
+            .str.to_datetime(format="%Y-%m-%dT%H:%M:%S%.f", time_unit="us")
+            .dt.replace_time_zone("UTC")
             .alias("arrived_at"),
         )
         .select(list(_SCHEMA.keys()))
