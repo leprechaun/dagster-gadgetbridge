@@ -10,7 +10,7 @@ def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
         pl.from_epoch(
             pl.col("TIMESTAMP"),
             time_unit=epoch_unit
-        ).dt.replace_time_zone("Asia/Bangkok").alias("TIMESTAMP")
+        )
     )
 
 def _read_table(table: str, db_path: str) -> pl.DataFrame:
