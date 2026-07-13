@@ -151,7 +151,7 @@ def _make_asset(table_name: str, settings: Dict[str, Any]):
 
         try:
             context.log.info("max TS=%s" % transformed.select(pl.col("TIMESTAMP").max()))
-        except:
+        except: # noqa: E722
             context.log.info("max TS=blew-up")
 
         return transformed
