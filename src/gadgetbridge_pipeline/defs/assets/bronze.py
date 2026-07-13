@@ -142,12 +142,19 @@ def _make_asset(table_name: str, settings: Dict[str, Any]):
         description=settings.get('description')
     )
     def _asset(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
-        return apply_bronze_transform(
+        transformed = apply_bronze_transform(
             _read_table(
                 table_name.upper(),
                 gadgetbridge_db_file),
             settings.get('epoch_unit', 'ms')
         )
+
+        try:
+            context.log.info("max TS=%s" % transformed.select(pl.col("TIMESTAMP").max()))
+        except:
+            context.log.info("max TS=blew-up")
+
+        return transformed
 
     _asset.__name__ = table_name
 
