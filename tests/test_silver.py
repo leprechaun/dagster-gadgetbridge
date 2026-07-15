@@ -214,7 +214,7 @@ def _sleep_activity(*rows):
     })
 
 
-def test_sleep_output_columns():
+def test_output_schema():
     activity = _sleep_activity(
         ("2024-01-14 15:00:00", AWAKE),
         ("2024-01-14 16:00:00", SLEEP),
@@ -224,7 +224,7 @@ def test_sleep_output_columns():
     assert set(result.columns) == {"date", "reporting_date", "start", "end", "duration"}
 
 
-def test_single_sleep_period():
+def test_awake_sleep_awake_produces_one_period():
     activity = _sleep_activity(
         ("2024-01-14 14:00:00", AWAKE),
         ("2024-01-14 15:00:00", SLEEP),
@@ -236,7 +236,7 @@ def test_single_sleep_period():
     assert result["start"][0].astimezone(datetime.timezone.utc) == _ts_utc("2024-01-14 15:00:00")
 
 
-def test_consecutive_sleep_rows_collapsed():
+def test_consecutive_sleep_rows_produce_one_period():
     # Three consecutive sleep rows should still produce a single period
     activity = _sleep_activity(
         ("2024-01-14 14:00:00", AWAKE),
@@ -249,7 +249,7 @@ def test_consecutive_sleep_rows_collapsed():
     assert result.shape[0] == 1
 
 
-def test_sleep_duration():
+def test_duration_spans_start_to_end():
     activity = _sleep_activity(
         ("2024-01-14 14:00:00", AWAKE),
         ("2024-01-14 15:00:00", SLEEP),
@@ -260,7 +260,7 @@ def test_sleep_duration():
     assert result["duration"][0] == expected
 
 
-def test_reporting_date_early_morning():
+def test_sleep_before_18_assigned_to_same_day():
     # 2024-01-14 19:00 UTC = 2024-01-15 02:00 Bangkok; 02:00 < 18:00 → reporting_date = 2024-01-15
     activity = _sleep_activity(
         ("2024-01-14 18:00:00", AWAKE),
@@ -271,7 +271,7 @@ def test_reporting_date_early_morning():
     assert result["reporting_date"][0] == datetime.date(2024, 1, 15)
 
 
-def test_reporting_date_evening():
+def test_sleep_after_18_assigned_to_next_day():
     # 2024-01-14 15:00 UTC = 2024-01-14 22:00 Bangkok; 22:00 > 18:00 → reporting_date = 2024-01-15
     activity = _sleep_activity(
         ("2024-01-14 14:00:00", AWAKE),
@@ -282,7 +282,7 @@ def test_reporting_date_evening():
     assert result["reporting_date"][0] == datetime.date(2024, 1, 15)
 
 
-def test_no_sleep_empty_result():
+def test_no_sleep_activity_returns_empty():
     activity = _sleep_activity(
         ("2024-01-14 08:00:00", AWAKE),
         ("2024-01-14 09:00:00", AWAKE),
