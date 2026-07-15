@@ -26,9 +26,6 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
         .with_columns(
             pl.col("start").shift(-1).alias("end")
         )
-        .with_columns(
-            duration=pl.col("end") - pl.col("start")
-        )
         .filter(pl.col("RAW_KIND") == 120)
         .drop(["RAW_KIND"])
         .with_columns(
@@ -41,7 +38,6 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
             ).alias("reporting_date")
         )
         .select(["date", "reporting_date", "start", "end"])
-        .with_columns((pl.col("end") - pl.col("start")).alias("duration"))
     )
 
     return sleep_periods

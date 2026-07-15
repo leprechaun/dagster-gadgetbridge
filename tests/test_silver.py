@@ -221,7 +221,7 @@ def test_output_schema():
         ("2024-01-15 07:00:00", AWAKE),
     )
     result = sleep_periods_based_on_activity(activity)
-    assert set(result.columns) == {"date", "reporting_date", "start", "end", "duration"}
+    assert set(result.columns) == {"date", "reporting_date", "start", "end"}
 
 
 def test_awake_sleep_awake_produces_one_period():
@@ -248,16 +248,6 @@ def test_consecutive_sleep_rows_produce_one_period():
     result = sleep_periods_based_on_activity(activity)
     assert result.shape[0] == 1
 
-
-def test_duration_spans_start_to_end():
-    activity = _sleep_activity(
-        ("2024-01-14 14:00:00", AWAKE),
-        ("2024-01-14 15:00:00", SLEEP),
-        ("2024-01-15 07:00:00", AWAKE),
-    )
-    result = sleep_periods_based_on_activity(activity)
-    expected = datetime.timedelta(hours=16)
-    assert result["duration"][0] == expected
 
 
 def test_sleep_before_18_assigned_to_same_day():
