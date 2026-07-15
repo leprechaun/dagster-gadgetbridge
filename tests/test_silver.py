@@ -1,7 +1,7 @@
+import datetime
 import pytest
 import polars as pl
-from datetime import datetime
-from gadgetbridge_pipeline.defs.assets.silver import per_minute_health_metrics
+from gadgetbridge_pipeline.defs.assets.silver import per_minute_health_metrics, sleep_periods_based_on_activity
 
 EXPECTED_COLUMNS = {
     "MINUTE", "DEVICE_ID", "USER_ID",
@@ -12,7 +12,7 @@ EXPECTED_COLUMNS = {
 }
 
 def _ts(s):
-    return datetime.fromisoformat(s)
+    return datetime.datetime.fromisoformat(s)
 
 
 def _activity(*rows):
@@ -183,3 +183,109 @@ def test_sort_order():
     result = _call(activity=activity)
     minutes = result["MINUTE"].to_list()
     assert minutes == sorted(minutes)
+
+
+# ---------------------------------------------------------------------------
+# sleep_periods_based_on_activity
+# ---------------------------------------------------------------------------
+
+SLEEP = 120
+AWAKE = 0
+
+
+def _ts_utc(s):
+    return datetime.datetime.fromisoformat(s).replace(tzinfo=datetime.timezone.utc)
+
+
+def _sleep_activity(*rows):
+    # each row: (utc_timestamp_str, raw_kind)
+    return pl.DataFrame({
+        "TIMESTAMP":     pl.Series([_ts_utc(r[0]) for r in rows], dtype=pl.Datetime("us", "UTC")),
+        "DEVICE_ID":     [1] * len(rows),
+        "USER_ID":       [1] * len(rows),
+        "RAW_INTENSITY": [0] * len(rows),
+        "STEPS":         [0] * len(rows),
+        "RAW_KIND":      [r[1] for r in rows],
+        "HEART_RATE":    [60] * len(rows),
+        "UNKNOWN1":      [0] * len(rows),
+        "SLEEP":         [0] * len(rows),
+        "DEEP_SLEEP":    [0] * len(rows),
+        "REM_SLEEP":     [0] * len(rows),
+    })
+
+
+def test_sleep_output_columns():
+    activity = _sleep_activity(
+        ("2024-01-14 15:00:00", AWAKE),
+        ("2024-01-14 16:00:00", SLEEP),
+        ("2024-01-15 07:00:00", AWAKE),
+    )
+    result = sleep_periods_based_on_activity(activity)
+    assert set(result.columns) == {"date", "reporting_date", "start", "end", "duration"}
+
+
+def test_single_sleep_period():
+    activity = _sleep_activity(
+        ("2024-01-14 14:00:00", AWAKE),
+        ("2024-01-14 15:00:00", SLEEP),
+        ("2024-01-15 07:00:00", AWAKE),
+    )
+    result = sleep_periods_based_on_activity(activity)
+    assert result.shape[0] == 1
+    # start is stored in Bangkok time; verify it represents the correct UTC instant
+    assert result["start"][0].astimezone(datetime.timezone.utc) == _ts_utc("2024-01-14 15:00:00")
+
+
+def test_consecutive_sleep_rows_collapsed():
+    # Three consecutive sleep rows should still produce a single period
+    activity = _sleep_activity(
+        ("2024-01-14 14:00:00", AWAKE),
+        ("2024-01-14 15:00:00", SLEEP),
+        ("2024-01-14 16:00:00", SLEEP),
+        ("2024-01-14 17:00:00", SLEEP),
+        ("2024-01-15 07:00:00", AWAKE),
+    )
+    result = sleep_periods_based_on_activity(activity)
+    assert result.shape[0] == 1
+
+
+def test_sleep_duration():
+    activity = _sleep_activity(
+        ("2024-01-14 14:00:00", AWAKE),
+        ("2024-01-14 15:00:00", SLEEP),
+        ("2024-01-15 07:00:00", AWAKE),
+    )
+    result = sleep_periods_based_on_activity(activity)
+    expected = datetime.timedelta(hours=16)
+    assert result["duration"][0] == expected
+
+
+def test_reporting_date_early_morning():
+    # 2024-01-14 19:00 UTC = 2024-01-15 02:00 Bangkok; 02:00 < 18:00 → reporting_date = 2024-01-15
+    activity = _sleep_activity(
+        ("2024-01-14 18:00:00", AWAKE),
+        ("2024-01-14 19:00:00", SLEEP),
+        ("2024-01-15 06:00:00", AWAKE),
+    )
+    result = sleep_periods_based_on_activity(activity)
+    assert result["reporting_date"][0] == datetime.date(2024, 1, 15)
+
+
+def test_reporting_date_evening():
+    # 2024-01-14 15:00 UTC = 2024-01-14 22:00 Bangkok; 22:00 > 18:00 → reporting_date = 2024-01-15
+    activity = _sleep_activity(
+        ("2024-01-14 14:00:00", AWAKE),
+        ("2024-01-14 15:00:00", SLEEP),
+        ("2024-01-15 07:00:00", AWAKE),
+    )
+    result = sleep_periods_based_on_activity(activity)
+    assert result["reporting_date"][0] == datetime.date(2024, 1, 15)
+
+
+def test_no_sleep_empty_result():
+    activity = _sleep_activity(
+        ("2024-01-14 08:00:00", AWAKE),
+        ("2024-01-14 09:00:00", AWAKE),
+    )
+    result = sleep_periods_based_on_activity(activity)
+    assert result.shape[0] == 0
