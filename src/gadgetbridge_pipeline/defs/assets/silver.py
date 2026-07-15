@@ -1,6 +1,50 @@
 import polars as pl
 import dagster as dg
+import datetime
+
 from dagster import AutomationCondition, Definitions
+
+
+@dg.asset(
+    group_name="gadgetbridge",
+    io_manager_key="deltalake_io_manager",
+    key_prefix=["gadgetbridge", "silver"],
+    ins={
+        "activity":        dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+    }
+)
+def sleep_periods_based_on_activity(activity: pl.DataFrame):
+    sleep_periods = (
+        activity.with_columns(
+            pl.col("TIMESTAMP").dt.convert_time_zone("Asia/Bangkok")
+        )
+        .select(
+            ["TIMESTAMP", "RAW_KIND"]
+        )
+        .filter(pl.col("RAW_KIND").diff() != 0)
+        .rename({"TIMESTAMP":"start"})
+        .with_columns(
+            pl.col("start").shift(-1).alias("end")
+        )
+        .with_columns(
+            duration=pl.col("end") - pl.col("start")
+        )
+        .filter(pl.col("RAW_KIND") == 120)
+        .drop(["RAW_KIND"])
+        .with_columns(
+            pl.col("start").dt.date().alias("date")
+        ).with_columns(
+            pl.when(pl.col("start").dt.time() > datetime.time(18, 0)).then(
+                pl.col("start").dt.date() + pl.duration(days=1)
+            ).otherwise(
+                pl.col("start").dt.date()
+            ).alias("reporting_date")
+        )
+        .select(["date", "reporting_date", "start", "end"])
+        .with_columns((pl.col("end") - pl.col("start")).alias("duration"))
+    )
+
+    return sleep_periods
 
 
 def _by_minute(df: pl.DataFrame, col: str, alias: str, group_by: list[str]) -> pl.DataFrame:
@@ -90,4 +134,8 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-defs = Definitions(assets=[per_minute_health_metrics, daily_heart_rate_distribution])
+defs = Definitions(assets=[
+    per_minute_health_metrics,
+    daily_heart_rate_distribution,
+    sleep_periods_based_on_activity
+])
