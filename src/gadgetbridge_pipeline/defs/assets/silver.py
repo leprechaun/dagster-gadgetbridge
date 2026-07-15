@@ -1,3 +1,4 @@
+import sys
 import polars as pl
 import dagster as dg
 import datetime
@@ -6,11 +7,9 @@ from dagster import AutomationCondition, Definitions
 
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "silver"],
     ins={
-        "activity":        dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
     }
 )
 def sleep_periods_based_on_activity(activity: pl.DataFrame):
@@ -52,9 +51,7 @@ def _by_minute(df: pl.DataFrame, col: str, alias: str, group_by: list[str]) -> p
 
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "silver"],
     ins={
         "activity":        dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
         "temperature":     dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_temperature_sample"])),
@@ -105,9 +102,7 @@ def per_minute_health_metrics(
 
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "silver"],
     ins={
         "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
     },
@@ -130,8 +125,10 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-defs = Definitions(assets=[
-    per_minute_health_metrics,
-    daily_heart_rate_distribution,
-    sleep_periods_based_on_activity
-])
+defs = Definitions(
+    assets=dg.load_assets_from_modules(
+        [sys.modules[__name__]],
+        group_name="gadgetbridge",
+        key_prefix=["gadgetbridge", "silver"],
+    )
+)
