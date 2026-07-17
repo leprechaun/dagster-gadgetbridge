@@ -65,12 +65,22 @@ Tests live in `tests/` and run without any external dependencies — no S3, no D
 | `test_silver.py` | Row count, minute truncation, left-join nulls for missing data, multi-sample aggregation within a minute, column set, sort order |
 | `test_gold.py` | `daily_health_snapshot` cross-metric join and daily averaging |
 | `test_medicine.py` | Date-range expansion from prescriptions, null end-date handling, skip application, dosage calculation |
+| `test_s3_sensor.py` | Cursor parsing and skip-vs-run decision logic for the SQLite S3 sensor |
+| `test_medicine_s3_sensor.py` | Cursor parsing and skip-vs-run decision logic for the medicine CSV sensor |
+| `test_owntracks_s3_sensor.py` | Month/partition-key derivation and affected-month run planning for the OwnTracks sensor |
 
 Run tests locally:
 
 ```bash
 uv sync --all-groups
 uv run pytest -v tests/
+```
+
+Every run prints a coverage summary (via `pytest-cov`, configured in `pyproject.toml`). For a browsable line-by-line HTML report:
+
+```bash
+uv run pytest tests/ --cov-report=html
+open htmlcov/index.html
 ```
 
 ## CI/CD

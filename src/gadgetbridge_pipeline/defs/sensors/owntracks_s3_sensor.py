@@ -51,6 +51,40 @@ def _partition_key(year_month: str) -> str:
     return f"{year_month}-01"
 
 
+def _group_by_month(files: dict[str, str]) -> dict[str, dict[str, str]]:
+    grouped: dict[str, dict[str, str]] = defaultdict(dict)
+    for key, etag in files.items():
+        grouped[_month_from_key(key)][key] = etag
+    return grouped
+
+
+def plan_run_requests(
+    current: dict[str, str], previous: dict[str, str]
+) -> list[dict]:
+    """Pure decision logic: given current and previously-seen {s3_key: etag}
+    maps, return one entry per month whose files changed, sorted by month.
+    """
+    current_by_month = _group_by_month(current)
+    previous_by_month = _group_by_month(previous)
+
+    affected_months = sorted(
+        month
+        for month, files in current_by_month.items()
+        if files != previous_by_month.get(month)
+    )
+
+    requests = []
+    for month in affected_months:
+        pk = _partition_key(month)
+        etag_hash = hashlib.md5(
+            json.dumps(sorted(current_by_month[month].items())).encode()
+        ).hexdigest()
+        requests.append(
+            {"partition_key": pk, "month": month, "run_key": f"{pk}::{etag_hash}"}
+        )
+    return requests
+
+
 @sensor(
     name="owntracks_s3_sensor",
     description="Triggers monthly partition runs when .rec files in S3 change.",
@@ -83,37 +117,21 @@ def owntracks_s3_sensor(context: SensorEvaluationContext):
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # Group file ETags by month
-    current_by_month: dict[str, dict[str, str]] = defaultdict(dict)
-    for key, etag in current.items():
-        current_by_month[_month_from_key(key)][key] = etag
+    run_requests = plan_run_requests(current, previous)
 
-    previous_by_month: dict[str, dict[str, str]] = defaultdict(dict)
-    for key, etag in previous.items():
-        previous_by_month[_month_from_key(key)][key] = etag
-
-    affected_months = [
-        month for month, files in current_by_month.items()
-        if files != previous_by_month.get(month)
-    ]
-
-    if not affected_months:
+    if not run_requests:
         yield SkipReason(
             f"No changes detected across {len(current)} OwnTracks .rec file(s)."
         )
         return
 
-    context.log.info(f"Affected months: {sorted(affected_months)}")
+    context.log.info(f"Affected months: {[r['month'] for r in run_requests]}")
     context.update_cursor(json.dumps(current))
 
-    for month in sorted(affected_months):
-        pk = _partition_key(month)
-        etag_hash = hashlib.md5(
-            json.dumps(sorted(current_by_month[month].items())).encode()
-        ).hexdigest()
+    for req in run_requests:
         yield RunRequest(
-            partition_key=pk,
-            run_key=f"{pk}::{etag_hash}",
+            partition_key=req["partition_key"],
+            run_key=req["run_key"],
             tags={"triggered_by": "owntracks_s3_sensor"},
         )
 
