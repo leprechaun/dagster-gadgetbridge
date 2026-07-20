@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 import polars as pl
 import dagster as dg
-from dagster import AssetCheckResult, AutomationCondition, Definitions
+from dagster import AssetCheckResult, Definitions
 from gadgetbridge_pipeline.defs.resources import S3ClientResource
 
 _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
@@ -121,20 +121,8 @@ def medicine_log_skips_within_prescriptions(
     )
 
 
-@dg.asset(
-    group_name="gadgetbridge",
-    io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "gold"],
-    ins={"medicine_log": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"]))},
-    automation_condition=AutomationCondition.eager(),
-    description="Daily medication adherence at the gold layer for joining with health metrics",
-)
-def daily_medicine_adherence(medicine_log: pl.DataFrame) -> pl.DataFrame:
-    return medicine_log
-
-
 defs = Definitions(
-    assets=[medicine_log, daily_medicine_adherence],
+    assets=[medicine_log],
     asset_checks=[
         medicine_log_dosage_positive,
         medicine_log_skips_within_prescriptions,
