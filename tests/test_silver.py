@@ -1,7 +1,7 @@
 import datetime
 import pytest
 import polars as pl
-from gadgetbridge_pipeline.defs.assets.silver import per_minute_health_metrics, sleep_periods_based_on_activity
+from gadgetbridge_pipeline.defs.assets.silver import per_minute_health_metrics, sleep_periods_based_on_activity, daily_sleep_duration, daily_sleep_duration_checks
 
 EXPECTED_COLUMNS = {
     "MINUTE", "DEVICE_ID", "USER_ID",
@@ -279,3 +279,143 @@ def test_no_sleep_activity_returns_empty():
     )
     result = sleep_periods_based_on_activity(activity)
     assert result.shape[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# daily_sleep_duration
+# ---------------------------------------------------------------------------
+
+def _bkk(s):
+    return datetime.datetime.fromisoformat(s).replace(tzinfo=datetime.timezone(datetime.timedelta(hours=7)))
+
+
+def _sleep_periods(*rows):
+    # each row: (reporting_date, start, end) — start/end as "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
+    return pl.DataFrame({
+        "date":            [r[0] for r in rows],
+        "reporting_date":  [r[0] for r in rows],
+        "start":           pl.Series([_bkk(r[1]) for r in rows]),
+        "end":             pl.Series([_bkk(r[2]) for r in rows]),
+    }).with_columns(
+        pl.col("date").str.to_date(),
+        pl.col("reporting_date").str.to_date(),
+    )
+
+
+def test_daily_sleep_duration_output_schema():
+    periods = _sleep_periods(
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = daily_sleep_duration(periods)
+    assert set(result.columns) == {"reporting_date", "sleep_start", "wake_time", "total_sleep_minutes"}
+
+
+def test_daily_sleep_duration_single_period_duration_start_and_wake():
+    periods = _sleep_periods(
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = daily_sleep_duration(periods)
+    assert result.shape[0] == 1
+    assert result["total_sleep_minutes"][0] == 8 * 60
+    assert result["sleep_start"][0] == _bkk("2024-01-14 23:00:00")
+    assert result["wake_time"][0] == _bkk("2024-01-15 07:00:00")
+
+
+def test_daily_sleep_duration_interrupted_sleep_sums_periods_and_spans_earliest_to_latest():
+    # two periods the same night, with a waking gap in between
+    periods = _sleep_periods(
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 01:00:00"),
+        ("2024-01-15", "2024-01-15 01:30:00", "2024-01-15 07:00:00"),
+    )
+    result = daily_sleep_duration(periods)
+    assert result.shape[0] == 1
+    # 2h + 5.5h = 7.5h of actual sleep, not the full 8h span
+    assert result["total_sleep_minutes"][0] == 7.5 * 60
+    assert result["sleep_start"][0] == _bkk("2024-01-14 23:00:00")
+    assert result["wake_time"][0] == _bkk("2024-01-15 07:00:00")
+
+
+def test_daily_sleep_duration_multiple_nights_are_grouped_and_sorted_separately():
+    periods = _sleep_periods(
+        ("2024-01-16", "2024-01-15 23:00:00", "2024-01-16 06:00:00"),
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = daily_sleep_duration(periods)
+    assert result["reporting_date"].to_list() == [datetime.date(2024, 1, 15), datetime.date(2024, 1, 16)]
+    assert result["total_sleep_minutes"].to_list() == [8 * 60, 7 * 60]
+
+
+def test_daily_sleep_duration_total_sleep_minutes_is_a_plain_numeric_type():
+    # Delta Lake has no duration/interval type — regression guard against
+    # reintroducing a pl.Duration column (see commit 253eaa6).
+    periods = _sleep_periods(
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = daily_sleep_duration(periods)
+    assert result["total_sleep_minutes"].dtype in (pl.Int64, pl.Int32, pl.Float64)
+
+
+# daily_sleep_duration_checks — total_sleep_minutes in [0, 1440], sleep_start < wake_time
+
+def _daily_summary(*rows):
+    # each row: (reporting_date, sleep_start, wake_time, total_sleep_minutes)
+    return pl.DataFrame({
+        "reporting_date":     [datetime.date.fromisoformat(r[0]) for r in rows],
+        "sleep_start":        pl.Series([_bkk(r[1]) for r in rows]),
+        "wake_time":          pl.Series([_bkk(r[2]) for r in rows]),
+        "total_sleep_minutes": [r[3] for r in rows],
+    })
+
+
+def test_daily_sleep_duration_checks_passes():
+    df = _daily_summary(
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00", 480),
+    )
+    result = daily_sleep_duration_checks(df)
+    assert result.passed
+
+
+def test_daily_sleep_duration_checks_fails_on_negative_duration():
+    df = _daily_summary(
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00", -10),
+    )
+    result = daily_sleep_duration_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["check"] == "greater_than_or_equal_to(0)" for f in failures)
+
+
+def test_daily_sleep_duration_checks_fails_above_24h():
+    df = _daily_summary(
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00", 1441),
+    )
+    result = daily_sleep_duration_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["check"] == "less_than_or_equal_to(1440)" for f in failures)
+
+
+def test_daily_sleep_duration_checks_fails_when_start_not_before_wake():
+    df = _daily_summary(
+        ("2024-01-15", "2024-01-15 08:00:00", "2024-01-15 07:00:00", 480),
+    )
+    result = daily_sleep_duration_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["check"] == "sleep_start_before_wake_time" for f in failures)
+
+
+def test_daily_sleep_duration_checks_reports_multiple_failures_in_one_pass():
+    # pandera's lazy validation should surface every violation, not just the first
+    df = _daily_summary(
+        ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00", -10),
+        ("2024-01-16", "2024-01-16 08:00:00", "2024-01-16 07:00:00", 1441),
+    )
+    result = daily_sleep_duration_checks(df)
+    assert not result.passed
+    checks_failed = {f["check"] for f in result.metadata["failure_cases"].value}
+    assert checks_failed == {
+        "greater_than_or_equal_to(0)",
+        "less_than_or_equal_to(1440)",
+        "sleep_start_before_wake_time",
+    }

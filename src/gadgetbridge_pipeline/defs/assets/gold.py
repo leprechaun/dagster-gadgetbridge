@@ -198,4 +198,42 @@ def heart_rate_distribution_by_medication_and_weekday(
     )
 
 
-defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after, steps_per_day, steps_vs_stress, heart_rate_distribution_by_medication_and_weekday])
+@dg.asset(
+    group_name="gadgetbridge",
+    io_manager_key="deltalake_io_manager",
+    key_prefix=["gadgetbridge", "gold"],
+    ins={
+        "sleep_periods": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description="Nightly sleep start/end times normalized onto a common date for weekday vs weekend overlay charting",
+)
+def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
+    TZ = "Asia/Bangkok"
+    CUTOFF = datetime.time(15, 0)
+    ONE_DAY = pl.duration(days=1)
+    COMMON_DATE = datetime.date(1900, 1, 1)
+
+    return (
+        sleep_periods
+        .with_columns(
+            pl.col(["start", "end"]).dt.convert_time_zone(TZ)
+        )
+        .select(["reporting_date", "start", "end"])
+        .sort(by="reporting_date")
+        .with_columns(
+            (pl.col("reporting_date").dt.weekday() < 6).alias("weekday")
+        )
+        .with_columns(
+            pl.lit(COMMON_DATE).dt.combine(pl.col("start").dt.time()).alias("start"),
+            pl.lit(COMMON_DATE).dt.combine(pl.col("end").dt.time()).alias("end"),
+        )
+        .with_columns(
+            pl.when(pl.col("start").dt.time() > CUTOFF).then(pl.col("start") - ONE_DAY).otherwise(pl.col("start")),
+            pl.when(pl.col("end").dt.time() > CUTOFF).then(pl.col("end") - ONE_DAY).otherwise(pl.col("end")),
+            pl.col("reporting_date").dt.strftime("%Y-%m-%d"),
+        )
+    )
+
+
+defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after, steps_per_day, steps_vs_stress, heart_rate_distribution_by_medication_and_weekday, daily_sleep_schedule])

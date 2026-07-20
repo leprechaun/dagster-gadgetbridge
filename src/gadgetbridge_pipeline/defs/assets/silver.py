@@ -3,7 +3,11 @@ import polars as pl
 import dagster as dg
 import datetime
 
-from dagster import AutomationCondition, Definitions
+import pandera.polars as pa
+from pandera.engines.polars_engine import DateTime
+from pandera.typing.polars import Series
+
+from dagster import AutomationCondition, Definitions, AssetCheckResult
 
 
 @dg.asset(
@@ -40,6 +44,57 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
     )
 
     return sleep_periods
+
+
+@dg.asset(
+    io_manager_key="deltalake_io_manager",
+    ins={
+        "sleep_periods": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description="Nightly sleep duration, start, and wake time, aggregated from individual sleep periods",
+)
+def daily_sleep_duration(sleep_periods: pl.DataFrame) -> pl.DataFrame:
+    return (
+        sleep_periods
+        .with_columns(
+            (pl.col("end") - pl.col("start")).dt.total_minutes().alias("period_minutes")
+        )
+        .group_by("reporting_date")
+        .agg(
+            pl.col("start").min().alias("sleep_start"),
+            pl.col("end").max().alias("wake_time"),
+            pl.col("period_minutes").sum().alias("total_sleep_minutes"),
+        )
+        .sort("reporting_date")
+    )
+
+
+class DailySleepDurationSchema(pa.DataFrameModel):
+    reporting_date: Series[pl.Date]
+    sleep_start: Series[DateTime] = pa.Field(dtype_kwargs={"time_zone_agnostic": True})
+    wake_time: Series[DateTime] = pa.Field(dtype_kwargs={"time_zone_agnostic": True})
+    total_sleep_minutes: Series[int] = pa.Field(ge=0, le=1440)
+
+    @pa.dataframe_check
+    def sleep_start_before_wake_time(cls, data: pa.PolarsData) -> pl.LazyFrame:
+        return data.lazyframe.select(pl.col("sleep_start") < pl.col("wake_time"))
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "silver", "daily_sleep_duration"]),
+    blocking=True,
+    name="daily_sleep_duration_range_checks",
+)
+def daily_sleep_duration_checks(daily_sleep_duration: pl.DataFrame) -> AssetCheckResult:
+    try:
+        DailySleepDurationSchema.validate(daily_sleep_duration, lazy=True)
+    except pa.errors.SchemaErrors as exc:
+        return AssetCheckResult(
+            passed=False,
+            metadata={"failure_cases": exc.failure_cases.to_dicts()},
+        )
+    return AssetCheckResult(passed=True)
 
 
 def _by_minute(df: pl.DataFrame, col: str, alias: str, group_by: list[str]) -> pl.DataFrame:
@@ -130,5 +185,6 @@ defs = Definitions(
         [sys.modules[__name__]],
         group_name="gadgetbridge",
         key_prefix=["gadgetbridge", "silver"],
-    )
+    ),
+    asset_checks=[daily_sleep_duration_checks],
 )

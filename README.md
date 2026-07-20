@@ -43,6 +43,10 @@ Asset checks that block promotion on failure: heart rate in range, battery 0–1
 |---|---|
 | `per_minute_health_metrics` | Wide left-join of all bronze health tables at 1-minute resolution. Heart rate value 255 (device sentinel for "no reading") is nulled out. |
 | `daily_heart_rate_distribution` | Daily histogram of heart rate in 5 bpm bins (40–160 range). |
+| `sleep_periods_based_on_activity` | Individual sleep periods (start/end) derived from contiguous "asleep" activity samples |
+| `daily_sleep_duration` | Nightly sleep duration (minutes), sleep start, and wake time, aggregated from `sleep_periods_based_on_activity` — a base for future moving-average and medication/stress join assets |
+
+Blocking asset check on `daily_sleep_duration`, defined as a [pandera](https://pandera.readthedocs.io/) schema (`DailySleepDurationSchema` in `silver.py`): total sleep 0–1440 minutes, sleep start before wake time. On failure, every violated row/check is reported in one pass via pandera's lazy validation, not just the first.
 
 ### Gold
 
@@ -62,7 +66,7 @@ Tests live in `tests/` and run without any external dependencies — no S3, no D
 | File | What it covers |
 |---|---|
 | `test_bronze.py` | Epoch-to-datetime conversion for second and millisecond timestamps; pass/fail behavior of every range-bound asset check |
-| `test_silver.py` | Row count, minute truncation, left-join nulls for missing data, multi-sample aggregation within a minute, column set, sort order |
+| `test_silver.py` | Row count, minute truncation, left-join nulls for missing data, multi-sample aggregation within a minute, column set, sort order; sleep period detection, `daily_sleep_duration` aggregation across interrupted/multiple nights, and its range/invariant asset check |
 | `test_gold.py` | `daily_health_snapshot` cross-metric join and daily averaging |
 | `test_medicine.py` | Date-range expansion from prescriptions, null end-date handling, skip application, dosage calculation |
 | `test_s3_sensor.py` | Cursor parsing and skip-vs-run decision logic for the SQLite S3 sensor |
