@@ -137,6 +137,7 @@ celerybeat.pid
 # Environments
 .env
 .env.local
+.env.k8s
 .envrc
 .venv
 env/
@@ -205,3 +206,5 @@ __marimo__/
 
 .tmp_dagster*
 .dg
+
+data/

@@ -1,40 +1,7 @@
 import polars as pl
 import dagster as dg
 import datetime
-from dagster import AssetExecutionContext, AutomationCondition, Definitions
-
-@dg.asset(
-    group_name="gadgetbridge",
-    io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "gold"],
-    ins={
-        "daily_heart_rate_distribution": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "daily_heart_rate_distribution"])),
-    },
-    automation_condition=AutomationCondition.eager(),
-)
-def weekday_heart_rate_distribution_before_and_after(
-    context: AssetExecutionContext,
-    daily_heart_rate_distribution: pl.DataFrame,
-) -> pl.DataFrame:
-    START_DATE = datetime.date(2026, 5, 24)
-
-    return (
-        daily_heart_rate_distribution
-        .with_columns(
-            pl.col("date").dt.weekday().alias("weekday"),
-            (pl.col("date") > START_DATE).alias("after"),
-        )
-        .filter(pl.col("weekday") < 6)
-        .group_by(["after", "heart_rate"])
-        .agg(pl.col("sample_count").sum())
-        .pivot("after", values="sample_count")
-        .with_columns(
-            pl.col("false") / pl.col("false").sum(),
-            pl.col("true") / pl.col("true").sum(),
-        )
-        .unpivot(index="heart_rate")
-        .rename({"variable": "after"})
-    )
+from dagster import AutomationCondition, Definitions
 
 @dg.asset(
     group_name="gadgetbridge",
@@ -154,7 +121,7 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
         .sort("date")
         .with_columns(
             pl.col("date").dt.weekday().alias("weekday"),
-            (pl.col("date").dt.weekday() >= 5).alias("is_weekend"),
+            (pl.col("date").dt.weekday() > 5).alias("is_weekend"),
         )
     )
 
@@ -236,4 +203,4 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-defs = Definitions(assets=[daily_health_snapshot, weekday_heart_rate_distribution_before_and_after, steps_per_day, steps_vs_stress, heart_rate_distribution_by_medication_and_weekday, daily_sleep_schedule])
+defs = Definitions(assets=[daily_health_snapshot, steps_per_day, steps_vs_stress, heart_rate_distribution_by_medication_and_weekday, daily_sleep_schedule])
