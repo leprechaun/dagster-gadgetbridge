@@ -236,6 +236,16 @@ def test_awake_sleep_awake_produces_one_period():
     assert result["start"][0].astimezone(datetime.timezone.utc) == _ts_utc("2024-01-14 15:00:00")
 
 
+def test_only_sleep_is_null():
+    activity = _sleep_activity(
+        ("2024-01-14 10:00:00", AWAKE),
+        ("2024-01-14 22:00:00", SLEEP),
+    )
+    result = sleep_periods_based_on_activity(activity)
+    print(result)
+    assert result.shape[0] == 0
+
+
 def test_consecutive_sleep_rows_produce_one_period():
     # Three consecutive sleep rows should still produce a single period
     activity = _sleep_activity(

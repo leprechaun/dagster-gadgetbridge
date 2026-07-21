@@ -41,6 +41,7 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
             ).alias("reporting_date")
         )
         .select(["date", "reporting_date", "start", "end"])
+        .filter(pl.col("end").is_not_null())
     )
 
     return sleep_periods
