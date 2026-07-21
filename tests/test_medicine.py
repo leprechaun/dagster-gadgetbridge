@@ -1,10 +1,12 @@
-from datetime import date
+from datetime import date, timedelta
 
 import polars as pl
 
 from gadgetbridge_pipeline.defs.assets.medicine import (
     build_medicine_log,
     medicine_log_dosage_positive,
+    medicine_skips_not_in_future,
+    medicine_skips_within_prescriptions,
 )
 
 _MED = "Tylenol"
@@ -116,4 +118,53 @@ def test_dosage_check_fails_on_zero():
         "effective_dosage": [0.0],
     })
     assert not medicine_log_dosage_positive(df).passed
+
+
+# --- medicine_skips_within_prescriptions ---
+
+def test_skips_within_prescriptions_passes_when_skip_in_range():
+    p = _prescriptions(("2026-01-05", "2026-01-07", _MED, 10.0))
+    result = medicine_skips_within_prescriptions(p, _skips("2026-01-06"))
+    assert result.passed
+
+
+def test_skips_within_prescriptions_fails_when_skip_outside_range():
+    p = _prescriptions(("2026-01-05", "2026-01-07", _MED, 10.0))
+    result = medicine_skips_within_prescriptions(p, _skips("2026-02-01"))
+    assert not result.passed
+    assert result.metadata["orphaned_skips"].text == "['2026-02-01']"
+
+
+def test_skips_within_prescriptions_passes_when_no_skips():
+    p = _prescriptions(("2026-01-05", "2026-01-07", _MED, 10.0))
+    result = medicine_skips_within_prescriptions(p, _NO_SKIPS)
+    assert result.passed
+    assert result.metadata["skip_count"].value == 0
+
+
+def test_skips_within_prescriptions_covers_open_ended_prescription():
+    p = _prescriptions(("2026-01-05", None, _MED, 10.0))
+    result = medicine_skips_within_prescriptions(p, _skips("2026-06-01"))
+    assert result.passed
+
+
+# --- medicine_skips_not_in_future ---
+
+def test_skips_not_in_future_passes_for_past_date():
+    yesterday = date.today() - timedelta(days=1)
+    skips = pl.DataFrame({"date": [yesterday]})
+    assert medicine_skips_not_in_future(skips).passed
+
+
+def test_skips_not_in_future_passes_for_today():
+    skips = pl.DataFrame({"date": [date.today()]})
+    assert medicine_skips_not_in_future(skips).passed
+
+
+def test_skips_not_in_future_fails_for_future_date():
+    tomorrow = date.today() + timedelta(days=1)
+    skips = pl.DataFrame({"date": [tomorrow]})
+    result = medicine_skips_not_in_future(skips)
+    assert not result.passed
+    assert result.metadata["future_skips"].text == f"['{tomorrow}']"
 

@@ -112,21 +112,24 @@ def medicine_log_dosage_positive(medicine_log: pl.DataFrame) -> AssetCheckResult
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"]),
+    asset=dg.AssetKey(["gadgetbridge", "raw", "prescriptions"]),
     blocking=True,
-    name="medicine_log_skips_within_prescriptions",
+    name="medicine_skips_within_prescriptions",
     additional_ins={
         "medicine_skips": AssetIn(key=AssetKey(["gadgetbridge", "raw", "medicine_skips"])),
     },
 )
-def medicine_log_skips_within_prescriptions(
-    medicine_log: pl.DataFrame,
+def medicine_skips_within_prescriptions(
+    prescriptions: pl.DataFrame,
     medicine_skips: pl.DataFrame,
 ) -> AssetCheckResult:
     if medicine_skips.is_empty():
         return AssetCheckResult(passed=True, metadata={"skip_count": 0, "orphaned_skips": "[]"})
-    log_dates = set(medicine_log["date"].to_list())
-    orphaned = [str(d) for d in medicine_skips["date"].to_list() if d not in log_dates]
+    ranges = list(zip(prescriptions["start_date"].to_list(), prescriptions["end_date"].to_list()))
+    orphaned = [
+        str(d) for d in medicine_skips["date"].to_list()
+        if not any(start <= d and (end is None or d <= end) for start, end in ranges)
+    ]
     checks = {"all_skips_within_prescriptions": len(orphaned) == 0}
     return AssetCheckResult(
         passed=all(checks.values()),
@@ -134,10 +137,26 @@ def medicine_log_skips_within_prescriptions(
     )
 
 
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "raw", "medicine_skips"]),
+    blocking=True,
+    name="medicine_skips_not_in_future",
+)
+def medicine_skips_not_in_future(medicine_skips: pl.DataFrame) -> AssetCheckResult:
+    today = date.today()
+    future = [str(d) for d in medicine_skips["date"].to_list() if d > today]
+    checks = {"no_future_skips": len(future) == 0}
+    return AssetCheckResult(
+        passed=all(checks.values()),
+        metadata=checks | {"future_skips": str(future)},
+    )
+
+
 defs = Definitions(
     assets=[prescriptions, medicine_skips, medicine_log],
     asset_checks=[
         medicine_log_dosage_positive,
-        medicine_log_skips_within_prescriptions,
+        medicine_skips_within_prescriptions,
+        medicine_skips_not_in_future,
     ],
 )
