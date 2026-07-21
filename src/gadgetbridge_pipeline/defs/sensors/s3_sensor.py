@@ -68,7 +68,7 @@ def evaluate_change(current_etag: str, last_modified: str, cursor: dict) -> dict
     description="Triggers a full pipeline run when the S3 SQLite file changes (ETag-based).",
     minimum_interval_seconds=300,   # poll every 5 minutes
     default_status=DefaultSensorStatus.RUNNING,
-    asset_selection=AssetSelection.all(),
+    asset_selection=AssetSelection.groups("gadgetbridge"),
 )
 def s3_sensor(context: SensorEvaluationContext, s3: S3ClientResource):
     client = s3.get_client()
