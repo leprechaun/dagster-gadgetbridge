@@ -189,7 +189,7 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
         .select(["reporting_date", "start", "end"])
         .sort(by="reporting_date")
         .with_columns(
-            (pl.col("reporting_date").dt.weekday() < 6).alias("weekday")
+            (pl.col("reporting_date").dt.weekday() >= 6).alias("is_weekend")
         )
         .with_columns(
             pl.lit(COMMON_DATE).dt.combine(pl.col("start").dt.time()).alias("start"),
