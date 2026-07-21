@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import io
 import os
 from datetime import date, timedelta
 
 import polars as pl
 import dagster as dg
-from dagster import AssetCheckResult, Definitions
+from dagster import AssetCheckResult, AssetIn, AssetKey, AutomationCondition, Definitions
 from gadgetbridge_pipeline.defs.resources import S3ClientResource
 
 _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
@@ -54,8 +55,33 @@ def build_medicine_log(
     return df
 
 
-def _download_csv(client, key: str, local_path: str) -> None:
-    client.download_file(_MEDICINE_BUCKET, key, local_path)
+def _read_s3_csv(s3: S3ClientResource, key: str, **read_csv_kwargs) -> pl.DataFrame:
+    buffer = io.BytesIO()
+    s3.get_client().download_fileobj(_MEDICINE_BUCKET, key, buffer)
+    buffer.seek(0)
+    return pl.read_csv(buffer, try_parse_dates=True, **read_csv_kwargs)
+
+
+@dg.asset(
+    name="prescriptions",
+    group_name="gadgetbridge",
+    key_prefix=["gadgetbridge", "raw"],
+    io_manager_key="csv_s3_io_manager",
+    description="Prescriptions CSV mirrored from S3.",
+)
+def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
+    return _read_s3_csv(s3, _PRESCRIPTIONS_KEY, schema_overrides={"dosage_mg": pl.Float64})
+
+
+@dg.asset(
+    name="medicine_skips",
+    group_name="gadgetbridge",
+    key_prefix=["gadgetbridge", "raw"],
+    io_manager_key="csv_s3_io_manager",
+    description="Medicine skip records mirrored from S3.",
+)
+def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
+    return _read_s3_csv(s3, _SKIPS_KEY)
 
 
 @dg.asset(
@@ -63,24 +89,10 @@ def _download_csv(client, key: str, local_path: str) -> None:
     io_manager_key="deltalake_io_manager",
     key_prefix=["gadgetbridge", "bronze"],
     description="Daily medication adherence log derived from prescriptions and skip records",
+    automation_condition=AutomationCondition.eager(),
 )
-def medicine_log(context, s3: S3ClientResource) -> pl.DataFrame:
-    client = s3.get_client()
-
-    _download_csv(client, _PRESCRIPTIONS_KEY, "/tmp/medicine_prescriptions.csv")
-    prescriptions = pl.read_csv(
-        "/tmp/medicine_prescriptions.csv",
-        schema_overrides={"start_date": pl.Date, "end_date": pl.Date, "dosage_mg": pl.Float64},
-        null_values=[""],
-    )
-
-    _download_csv(client, _SKIPS_KEY, "/tmp/medicine_skips.csv")
-    skips = pl.read_csv(
-        "/tmp/medicine_skips.csv",
-        schema_overrides={"date": pl.Date}
-    )
-
-    df = build_medicine_log(prescriptions, skips, today=date.today())
+def medicine_log(context, prescriptions: pl.DataFrame, medicine_skips: pl.DataFrame) -> pl.DataFrame:
+    df = build_medicine_log(prescriptions, medicine_skips, today=date.today())
     context.log.info(f"Generated {df.shape[0]} medicine log rows")
     return df
 
@@ -103,17 +115,18 @@ def medicine_log_dosage_positive(medicine_log: pl.DataFrame) -> AssetCheckResult
     asset=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"]),
     blocking=True,
     name="medicine_log_skips_within_prescriptions",
+    additional_ins={
+        "medicine_skips": AssetIn(key=AssetKey(["gadgetbridge", "raw", "medicine_skips"])),
+    },
 )
 def medicine_log_skips_within_prescriptions(
     medicine_log: pl.DataFrame,
-    s3: S3ClientResource,
+    medicine_skips: pl.DataFrame,
 ) -> AssetCheckResult:
-    s3.get_client().download_file(_MEDICINE_BUCKET, _SKIPS_KEY, "/tmp/medicine_skips_check.csv")
-    skips_df = pl.read_csv("/tmp/medicine_skips_check.csv", schema_overrides={"date": pl.Date})
-    if skips_df.is_empty():
+    if medicine_skips.is_empty():
         return AssetCheckResult(passed=True, metadata={"skip_count": 0, "orphaned_skips": "[]"})
     log_dates = set(medicine_log["date"].to_list())
-    orphaned = [str(d) for d in skips_df["date"].to_list() if d not in log_dates]
+    orphaned = [str(d) for d in medicine_skips["date"].to_list() if d not in log_dates]
     checks = {"all_skips_within_prescriptions": len(orphaned) == 0}
     return AssetCheckResult(
         passed=all(checks.values()),
@@ -122,7 +135,7 @@ def medicine_log_skips_within_prescriptions(
 
 
 defs = Definitions(
-    assets=[medicine_log],
+    assets=[prescriptions, medicine_skips, medicine_log],
     asset_checks=[
         medicine_log_dosage_positive,
         medicine_log_skips_within_prescriptions,

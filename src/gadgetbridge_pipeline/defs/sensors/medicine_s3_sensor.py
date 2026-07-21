@@ -2,8 +2,9 @@
 medicine_s3_sensor
 ------------------
 Polls S3 for changes to the two medicine CSV files (prescriptions and skips).
-Triggers rematerialization of medicine_log when either file's ETag changes.
-daily_medicine_adherence follows automatically via its eager automation condition.
+Triggers rematerialization of the raw prescriptions/medicine_skips assets when
+either file's ETag changes. medicine_log and daily_medicine_adherence follow
+automatically via their eager automation conditions.
 """
 
 from __future__ import annotations
@@ -64,7 +65,10 @@ def evaluate_change(current_etags: dict[str, str], cursor: dict) -> dict:
     description="Triggers medicine_log materialization when prescriptions.csv or medicine_skips.csv changes on S3.",
     minimum_interval_seconds=300,
     default_status=DefaultSensorStatus.RUNNING,
-    asset_selection=AssetSelection.assets(AssetKey(["gadgetbridge", "bronze", "medicine_log"])),
+    asset_selection=AssetSelection.assets(
+        AssetKey(["gadgetbridge", "raw", "prescriptions"]),
+        AssetKey(["gadgetbridge", "raw", "medicine_skips"]),
+    ),
 )
 def medicine_s3_sensor(context: SensorEvaluationContext, s3: S3ClientResource):
     client = s3.get_client()
