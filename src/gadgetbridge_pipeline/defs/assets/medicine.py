@@ -65,9 +65,9 @@ def _read_s3_csv(s3: S3ClientResource, key: str, **read_csv_kwargs) -> pl.DataFr
 @dg.asset(
     name="prescriptions",
     group_name="gadgetbridge",
-    key_prefix=["gadgetbridge", "raw"],
-    io_manager_key="csv_s3_io_manager",
-    description="Prescriptions CSV mirrored from S3.",
+    key_prefix=["gadgetbridge", "bronze"],
+    io_manager_key="deltalake_io_manager",
+    description="Prescriptions CSV mirrored from S3, versioned in Delta Lake.",
 )
 def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
     return _read_s3_csv(s3, _PRESCRIPTIONS_KEY, schema_overrides={"dosage_mg": pl.Float64})
@@ -76,9 +76,9 @@ def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
 @dg.asset(
     name="medicine_skips",
     group_name="gadgetbridge",
-    key_prefix=["gadgetbridge", "raw"],
-    io_manager_key="csv_s3_io_manager",
-    description="Medicine skip records mirrored from S3.",
+    key_prefix=["gadgetbridge", "bronze"],
+    io_manager_key="deltalake_io_manager",
+    description="Medicine skip records mirrored from S3, versioned in Delta Lake.",
 )
 def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
     return _read_s3_csv(s3, _SKIPS_KEY)
@@ -112,11 +112,11 @@ def medicine_log_dosage_positive(medicine_log: pl.DataFrame) -> AssetCheckResult
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "raw", "prescriptions"]),
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "prescriptions"]),
     blocking=True,
     name="medicine_skips_within_prescriptions",
     additional_ins={
-        "medicine_skips": AssetIn(key=AssetKey(["gadgetbridge", "raw", "medicine_skips"])),
+        "medicine_skips": AssetIn(key=AssetKey(["gadgetbridge", "bronze", "medicine_skips"])),
     },
 )
 def medicine_skips_within_prescriptions(
@@ -138,7 +138,7 @@ def medicine_skips_within_prescriptions(
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "raw", "medicine_skips"]),
+    asset=dg.AssetKey(["gadgetbridge", "bronze", "medicine_skips"]),
     blocking=True,
     name="medicine_skips_not_in_future",
 )

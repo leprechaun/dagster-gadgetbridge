@@ -1,8 +1,6 @@
-import io
 import os
 
 import boto3
-import polars as pl
 
 import dagster as dg
 from dagster import Definitions, EnvVar, InputContext, OutputContext
@@ -43,39 +41,6 @@ class FileS3IOManager(dg.ConfigurableIOManager):
         return local_path
 
 
-class CsvS3IOManager(dg.ConfigurableIOManager):
-    """Round-trips a polars DataFrame through S3 as CSV.
-
-    The S3 key is derived from the asset key, so an asset named
-    ["gadgetbridge", "raw", "foo"] round-trips through "gadgetbridge/raw/foo.csv".
-    """
-    bucket: str
-    endpoint_url: str
-
-    def _s3(self):
-        return boto3.client("s3", endpoint_url=self.endpoint_url)
-
-    def _key(self, asset_key):
-        return '/'.join(asset_key.path) + ".csv"
-
-    def handle_output(self, context: OutputContext, obj: pl.DataFrame):
-        key = self._key(context.asset_key)
-        buffer = io.BytesIO()
-        obj.write_csv(buffer)
-        buffer.seek(0)
-        self._s3().upload_fileobj(buffer, self.bucket, key)
-        context.log.info(f"Uploaded {obj.shape[0]} rows → s3://{self.bucket}/{key}")
-
-    def load_input(self, context: InputContext) -> pl.DataFrame:
-        key = self._key(context.asset_key)
-        buffer = io.BytesIO()
-        self._s3().download_fileobj(self.bucket, key, buffer)
-        buffer.seek(0)
-        df = pl.read_csv(buffer, try_parse_dates=True)
-        context.log.info(f"Downloaded s3://{self.bucket}/{key} → {df.shape[0]} rows")
-        return df
-
-
 class S3ClientResource(dg.ConfigurableResource):
     endpoint_url: str
     bucket: str
@@ -99,10 +64,6 @@ defs = Definitions(
             bucket=_deltalake_bucket,
             endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
             extension=".db",
-        ),
-        "csv_s3_io_manager": CsvS3IOManager(
-            bucket=_deltalake_bucket,
-            endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
         ),
         "deltalake_io_manager": DeltaLakePolarsIOManager(
             root_uri=f"s3://{_deltalake_bucket}/gadgetbridge/",
