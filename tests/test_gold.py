@@ -47,7 +47,7 @@ def test_output_columns():
         ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
     )
     result = daily_sleep_schedule(periods)
-    assert set(result.columns) == {"reporting_date", "start", "end", "weekday"}
+    assert set(result.columns) == {"reporting_date", "start", "end", "is_weekend"}
 
 
 def test_reporting_date_formatted_as_string():
@@ -77,10 +77,10 @@ def test_times_after_cutoff_are_shifted_back_a_day():
     assert result["start"][0] == _bkk("1899-12-31 23:00:00").replace(tzinfo=None)
 
 
-def test_weekday_flag_true_on_weekdays_false_on_weekends():
+def test_is_weekend_flag_true_on_weekdays_false_on_weekends():
     periods = _sleep_periods(
         ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),  # Monday
         ("2024-01-20", "2024-01-19 23:00:00", "2024-01-20 07:00:00"),  # Saturday
     )
     result = daily_sleep_schedule(periods).sort("reporting_date")
-    assert result["weekday"].to_list() == [True, False]
+    assert result["is_weekend"].to_list() == [False, True]
