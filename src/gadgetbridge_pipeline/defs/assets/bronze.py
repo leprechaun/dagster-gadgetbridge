@@ -6,7 +6,7 @@ import dagster as dg
 
 from dagster import AutomationCondition, Definitions, AssetExecutionContext, AssetCheckResult
 
-MIN_TIMESTAMP = datetime(2026, 1, 1, tzinfo=timezone.utc)
+START_OF_DATA_COLLECTION = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
     return df.with_columns(
@@ -213,7 +213,7 @@ def _make_timestamp_check(table_name: str):
 
         checks = {
             "no_nulls": null_count == 0,
-            "is_after_min_timestamp": minimum is not None and minimum >= MIN_TIMESTAMP,
+            "is_after_min_timestamp": minimum is not None and minimum >= START_OF_DATA_COLLECTION,
         }
 
         return AssetCheckResult(
