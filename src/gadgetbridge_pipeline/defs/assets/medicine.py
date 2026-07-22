@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import io
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import polars as pl
 import dagster as dg
@@ -12,6 +13,16 @@ from gadgetbridge_pipeline.defs.resources import S3ClientResource
 _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PRESCRIPTIONS_KEY = "gadgetbridge/raw/prescriptions.csv"
 _SKIPS_KEY = "gadgetbridge/raw/medicine_skips.csv"
+_TZ = ZoneInfo("Asia/Bangkok")
+
+
+def _today() -> date:
+    """'Today' in Asia/Bangkok, not the container's (usually UTC) system clock.
+
+    The medicine schedule fires at 00:05 Bangkok, which is 17:05 UTC the
+    previous day — date.today() there would return yesterday's date.
+    """
+    return datetime.now(_TZ).date()
 
 _EMPTY_SCHEMA = {
     "date": pl.Date,
@@ -92,7 +103,7 @@ def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
     automation_condition=AutomationCondition.eager(),
 )
 def medicine_log(context, prescriptions: pl.DataFrame, medicine_skips: pl.DataFrame) -> pl.DataFrame:
-    df = build_medicine_log(prescriptions, medicine_skips, today=date.today())
+    df = build_medicine_log(prescriptions, medicine_skips, today=_today())
     context.log.info(f"Generated {df.shape[0]} medicine log rows")
     return df
 
@@ -150,7 +161,7 @@ def medicine_skips_within_prescriptions(
     name="medicine_skips_not_in_future",
 )
 def medicine_skips_not_in_future(medicine_skips: pl.DataFrame) -> AssetCheckResult:
-    today = date.today()
+    today = _today()
     future = [str(d) for d in medicine_skips["date"].to_list() if d > today]
     checks = {"no_future_skips": len(future) == 0}
     return AssetCheckResult(

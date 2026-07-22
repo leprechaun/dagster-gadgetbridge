@@ -3,6 +3,7 @@ from datetime import date, timedelta
 import polars as pl
 
 from gadgetbridge_pipeline.defs.assets.medicine import (
+    _today,
     build_medicine_log,
     medicine_log_dosage_positive,
     medicine_skips_not_in_future,
@@ -151,18 +152,18 @@ def test_skips_within_prescriptions_covers_open_ended_prescription():
 # --- medicine_skips_not_in_future ---
 
 def test_skips_not_in_future_passes_for_past_date():
-    yesterday = date.today() - timedelta(days=1)
+    yesterday = _today() - timedelta(days=1)
     skips = pl.DataFrame({"date": [yesterday]})
     assert medicine_skips_not_in_future(skips).passed
 
 
 def test_skips_not_in_future_passes_for_today():
-    skips = pl.DataFrame({"date": [date.today()]})
+    skips = pl.DataFrame({"date": [_today()]})
     assert medicine_skips_not_in_future(skips).passed
 
 
 def test_skips_not_in_future_fails_for_future_date():
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = _today() + timedelta(days=1)
     skips = pl.DataFrame({"date": [tomorrow]})
     result = medicine_skips_not_in_future(skips)
     assert not result.passed
