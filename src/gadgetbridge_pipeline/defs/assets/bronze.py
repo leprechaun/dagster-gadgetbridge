@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 import polars as pl
 import dagster as dg
@@ -248,147 +248,124 @@ for (table, settings) in _TABLES.items():
     _checks.extend(checks)
 
 
-@dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"]),
-    blocking=True,
-    name="huami_extended_activity_sample_heartrate_checks"
+def _make_range_check(
+    asset_key: list,
+    name: str,
+    column: str,
+    checks: Dict[str, Callable[[Any, Any], bool]],
+    cast=int,
+):
+    """Factory for a blocking min/max range check on a single column.
+
+    `checks` maps a check name to a predicate over (minimum, maximum). Guards
+    against empty tables up front, since `cast(df[column].min())` raises
+    TypeError on None rather than failing the check gracefully.
+    """
+
+    @dg.asset_check(asset=dg.AssetKey(asset_key), blocking=True, name=name)
+    def _check(df: pl.DataFrame) -> AssetCheckResult:
+        if df.is_empty():
+            return AssetCheckResult(
+                passed=False,
+                description=f"No {column!r} data to check (empty table)",
+                metadata={"row_count": 0},
+            )
+
+        minimum = cast(df[column].min())
+        maximum = cast(df[column].max())
+
+        results = {check_name: fn(minimum, maximum) for check_name, fn in checks.items()}
+
+        return AssetCheckResult(
+            passed=all(results.values()),
+            metadata=results | {"minimum": minimum, "maximum": maximum},
+        )
+
+    return _check
+
+
+activity_heartrate_checks = _make_range_check(
+    ["gadgetbridge", "bronze", "huami_extended_activity_sample"],
+    "huami_extended_activity_sample_heartrate_checks",
+    "HEART_RATE",
+    {
+        "is_positive": lambda mn, mx: mn > 0,
+        "is_255 or below": lambda mn, mx: mx <= 255,
+    },
 )
-def activity_heartrate_checks(huami_extended_activity_sample: pl.DataFrame) -> AssetCheckResult:
-    act = huami_extended_activity_sample
-
-    minimum = int(act['HEART_RATE'].min())
-    maximum = int(act['HEART_RATE'].max())
-
-    checks = {
-        "is_positive": minimum > 0,
-        "is_255 or below": maximum <= 255
-    }
-
-    return AssetCheckResult(
-        passed=all(checks.values()),
-        metadata=checks | {"minimum": minimum, "maximum": maximum},
-    )
-
 _checks.append(activity_heartrate_checks)
 
 
-@dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"]),
-    blocking=True,
-    name="battery_level_range_checks",
+battery_level_checks = _make_range_check(
+    ["gadgetbridge", "bronze", "battery_level"],
+    "battery_level_range_checks",
+    "LEVEL",
+    {
+        "is_non_negative": lambda mn, mx: mn >= 0,
+        "is_at_most_100": lambda mn, mx: mx <= 100,
+    },
 )
-def battery_level_checks(battery_level: pl.DataFrame) -> AssetCheckResult:
-    minimum = int(battery_level["LEVEL"].min())
-    maximum = int(battery_level["LEVEL"].max())
-    checks = {
-        "is_non_negative": minimum >= 0,
-        "is_at_most_100": maximum <= 100,
-    }
-    return AssetCheckResult(
-        passed=all(checks.values()),
-        metadata=checks | {"minimum": minimum, "maximum": maximum},
-    )
-
 _checks.append(battery_level_checks)
 
 
-@dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "huami_spo2_sample"]),
-    blocking=True,
-    name="huami_spo2_sample_spo2_checks",
+spo2_checks = _make_range_check(
+    ["gadgetbridge", "bronze", "huami_spo2_sample"],
+    "huami_spo2_sample_spo2_checks",
+    "SPO2",
+    {
+        "is_at_least_70": lambda mn, mx: mn >= 70,
+        "is_at_most_100": lambda mn, mx: mx <= 100,
+    },
 )
-def spo2_checks(huami_spo2_sample: pl.DataFrame) -> AssetCheckResult:
-    minimum = int(huami_spo2_sample["SPO2"].min())
-    maximum = int(huami_spo2_sample["SPO2"].max())
-    checks = {
-        "is_at_least_70": minimum >= 70,
-        "is_at_most_100": maximum <= 100,
-    }
-    return AssetCheckResult(
-        passed=all(checks.values()),
-        metadata=checks | {"minimum": minimum, "maximum": maximum},
-    )
-
 _checks.append(spo2_checks)
 
 
-@dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "generic_temperature_sample"]),
-    blocking=True,
-    name="generic_temperature_sample_temperature_checks",
+temperature_checks = _make_range_check(
+    ["gadgetbridge", "bronze", "generic_temperature_sample"],
+    "generic_temperature_sample_temperature_checks",
+    "TEMPERATURE",
+    {
+        "is_at_least_15": lambda mn, mx: mn >= 15.0,
+        "is_at_most_42": lambda mn, mx: mx <= 42.0,
+    },
+    cast=float,
 )
-def temperature_checks(generic_temperature_sample: pl.DataFrame) -> AssetCheckResult:
-    minimum = float(generic_temperature_sample["TEMPERATURE"].min())
-    maximum = float(generic_temperature_sample["TEMPERATURE"].max())
-    checks = {
-        "is_at_least_15": minimum >= 15.0,
-        "is_at_most_42": maximum <= 42.0,
-    }
-    return AssetCheckResult(
-        passed=all(checks.values()),
-        metadata=checks | {"minimum": minimum, "maximum": maximum},
-    )
-
 _checks.append(temperature_checks)
 
 
-@dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"]),
-    blocking=True,
-    name="huami_stress_sample_stress_checks",
+stress_checks = _make_range_check(
+    ["gadgetbridge", "bronze", "huami_stress_sample"],
+    "huami_stress_sample_stress_checks",
+    "STRESS",
+    {
+        "is_at_least_1": lambda mn, mx: mn >= 1,
+        "is_at_most_100": lambda mn, mx: mx <= 100,
+    },
 )
-def stress_checks(huami_stress_sample: pl.DataFrame) -> AssetCheckResult:
-    minimum = int(huami_stress_sample["STRESS"].min())
-    maximum = int(huami_stress_sample["STRESS"].max())
-    checks = {
-        "is_at_least_1": minimum >= 1,
-        "is_at_most_100": maximum <= 100,
-    }
-    return AssetCheckResult(
-        passed=all(checks.values()),
-        metadata=checks | {"minimum": minimum, "maximum": maximum},
-    )
-
 _checks.append(stress_checks)
 
 
-@dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "generic_hrv_value_sample"]),
-    blocking=True,
-    name="generic_hrv_value_sample_hrv_checks",
+hrv_checks = _make_range_check(
+    ["gadgetbridge", "bronze", "generic_hrv_value_sample"],
+    "generic_hrv_value_sample_hrv_checks",
+    "VALUE",
+    {
+        "is_positive": lambda mn, mx: mn > 0,
+        "is_at_most_300": lambda mn, mx: mx <= 300,
+    },
 )
-def hrv_checks(generic_hrv_value_sample: pl.DataFrame) -> AssetCheckResult:
-    minimum = int(generic_hrv_value_sample["VALUE"].min())
-    maximum = int(generic_hrv_value_sample["VALUE"].max())
-    checks = {
-        "is_positive": minimum > 0,
-        "is_at_most_300": maximum <= 300,
-    }
-    return AssetCheckResult(
-        passed=all(checks.values()),
-        metadata=checks | {"minimum": minimum, "maximum": maximum},
-    )
-
 _checks.append(hrv_checks)
 
 
-@dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "huami_sleep_respiratory_rate_sample"]),
-    blocking=True,
-    name="huami_sleep_respiratory_rate_sample_rate_checks",
+respiratory_rate_checks = _make_range_check(
+    ["gadgetbridge", "bronze", "huami_sleep_respiratory_rate_sample"],
+    "huami_sleep_respiratory_rate_sample_rate_checks",
+    "RATE",
+    {
+        "is_at_least_4": lambda mn, mx: mn >= 4,
+        "is_at_most_60": lambda mn, mx: mx <= 60,
+    },
 )
-def respiratory_rate_checks(huami_sleep_respiratory_rate_sample: pl.DataFrame) -> AssetCheckResult:
-    minimum = int(huami_sleep_respiratory_rate_sample["RATE"].min())
-    maximum = int(huami_sleep_respiratory_rate_sample["RATE"].max())
-    checks = {
-        "is_at_least_4": minimum >= 4,
-        "is_at_most_60": maximum <= 60,
-    }
-    return AssetCheckResult(
-        passed=all(checks.values()),
-        metadata=checks | {"minimum": minimum, "maximum": maximum},
-    )
-
 _checks.append(respiratory_rate_checks)
 
 

@@ -103,6 +103,13 @@ def medicine_log(context, prescriptions: pl.DataFrame, medicine_skips: pl.DataFr
     name="medicine_log_dosage_positive",
 )
 def medicine_log_dosage_positive(medicine_log: pl.DataFrame) -> AssetCheckResult:
+    if medicine_log.is_empty():
+        return AssetCheckResult(
+            passed=False,
+            description="No dosage data to check (empty table)",
+            metadata={"row_count": 0},
+        )
+
     minimum = float(medicine_log["dosage_mg"].min())
     checks = {"is_positive": minimum > 0}
     return AssetCheckResult(
