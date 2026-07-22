@@ -152,11 +152,6 @@ def _make_asset(table_name: str, settings: Dict[str, Any]):
             settings.get('epoch_unit', 'ms')
         )
 
-        try:
-            context.log.info("max TS=%s" % transformed.select(pl.col("TIMESTAMP").max()))
-        except: # noqa: E722
-            context.log.info("max TS=blew-up")
-
         return transformed
 
     _asset.__name__ = table_name
