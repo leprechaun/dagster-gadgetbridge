@@ -203,6 +203,13 @@ def _make_timestamp_check(table_name: str):
         name="%s_timestamp_checks" % table_name
     )
     def _asset_check(df: pl.DataFrame) -> AssetCheckResult:
+        if "TIMESTAMP" not in df.columns or df.is_empty():
+            return AssetCheckResult(
+                passed=False,
+                description="No TIMESTAMP data to check (missing column or empty table)",
+                metadata={"row_count": df.height},
+            )
+
         null_count = int(df["TIMESTAMP"].null_count())
         minimum = df["TIMESTAMP"].min()
 

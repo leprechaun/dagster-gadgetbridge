@@ -182,3 +182,17 @@ def test_timestamp_should_always_be_after_2026():
     result = check(_ts_df([datetime(2025, 12, 31, tzinfo=timezone.utc)]))
     assert not result.passed
     assert result.metadata["is_after_min_timestamp"].value is False
+
+
+def test_timestamp_check_fails_gracefully_on_empty_table():
+    check = _make_timestamp_check("battery_level")
+    result = check(pl.DataFrame(schema={"TIMESTAMP": pl.Datetime(time_zone="UTC")}))
+    assert not result.passed
+    assert result.metadata["row_count"].value == 0
+
+
+def test_timestamp_check_fails_gracefully_on_missing_column():
+    check = _make_timestamp_check("battery_level")
+    result = check(pl.DataFrame({"OTHER_COL": [1, 2, 3]}))
+    assert not result.passed
+    assert result.metadata["row_count"].value == 3
