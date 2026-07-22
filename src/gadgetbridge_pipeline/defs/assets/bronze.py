@@ -165,10 +165,10 @@ def _make_asset_check(table_name: str, settings: Dict[str, Any]):
         blocking=True,
         name="%s_schema_matches_expectations" % table_name
     )
-    def _asset_check(battery_level: pl.DataFrame) -> AssetCheckResult:
+    def _asset_check(df: pl.DataFrame) -> AssetCheckResult:
         expected_schema = _TABLES[table_name]['schema']
 
-        actual_schema = battery_level.schema
+        actual_schema = df.schema
 
         if actual_schema != expected_schema:
             differences = []
