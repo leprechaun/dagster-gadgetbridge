@@ -1,9 +1,12 @@
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 import polars as pl
 import dagster as dg
 
 from dagster import AutomationCondition, Definitions, AssetExecutionContext, AssetCheckResult
+
+MIN_TIMESTAMP = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
     return df.with_columns(
@@ -197,27 +200,50 @@ def _make_asset_check(table_name: str, settings: Dict[str, Any]):
     return _asset_check
 
 
+def _make_timestamp_check(table_name: str):
+
+    @dg.asset_check(
+        asset=dg.AssetKey(["gadgetbridge", "bronze", table_name]),
+        blocking=True,
+        name="%s_timestamp_checks" % table_name
+    )
+    def _asset_check(df: pl.DataFrame) -> AssetCheckResult:
+        null_count = int(df["TIMESTAMP"].null_count())
+        minimum = df["TIMESTAMP"].min()
+
+        checks = {
+            "no_nulls": null_count == 0,
+            "is_after_min_timestamp": minimum is not None and minimum >= MIN_TIMESTAMP,
+        }
+
+        return AssetCheckResult(
+            passed=all(checks.values()),
+            metadata=checks | {"null_count": null_count, "minimum": str(minimum)},
+        )
+
+    return _asset_check
+
+
 def _make_bronze(table_name: str, settings: Dict[str, str]):
     _asset = _make_asset(table_name, settings)
 
+    checks = []
+
     if 'schema' in settings:
-        _check = _make_asset_check(table_name, settings)
-    else:
-        _check = None
+        checks.append(_make_asset_check(table_name, settings))
 
+    checks.append(_make_timestamp_check(table_name))
 
-    return (_asset, _check)
+    return (_asset, checks)
 
 _tables = []
 _checks = []
 
 
 for (table, settings) in _TABLES.items():
-    t, c = _make_bronze(table, settings)
+    t, checks = _make_bronze(table, settings)
     _tables.append(t)
-
-    if c is not None:
-        _checks.append(c)
+    _checks.extend(checks)
 
 
 @dg.asset_check(

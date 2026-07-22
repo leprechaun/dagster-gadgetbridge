@@ -1,6 +1,6 @@
 import pytest
 import polars as pl
-from datetime import datetime
+from datetime import datetime, timezone
 from gadgetbridge_pipeline.defs.assets.bronze import (
     apply_bronze_transform,
     activity_heartrate_checks,
@@ -10,6 +10,7 @@ from gadgetbridge_pipeline.defs.assets.bronze import (
     stress_checks,
     hrv_checks,
     respiratory_rate_checks,
+    _make_timestamp_check,
 )
 
 def _hr_df(values):
@@ -154,3 +155,30 @@ def test_respiratory_rate_checks_fails_below_min():
 def test_respiratory_rate_checks_fails_above_max():
     result = respiratory_rate_checks(pl.DataFrame({"RATE": [15, 61]}))
     assert not result.passed
+
+
+# generic per-table timestamp check — TIMESTAMP should never be null, and should always be after 2026-01-01
+
+def _ts_df(values):
+    return pl.DataFrame({"TIMESTAMP": values})
+
+def test_timestamp_is_never_null_and_always_after_2026():
+    check = _make_timestamp_check("battery_level")
+    result = check(_ts_df([
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+        datetime(2026, 6, 1, tzinfo=timezone.utc),
+    ]))
+    assert result.passed
+    assert result.metadata["null_count"].value == 0
+
+def test_timestamp_should_never_be_null():
+    check = _make_timestamp_check("battery_level")
+    result = check(_ts_df([datetime(2026, 6, 1, tzinfo=timezone.utc), None]))
+    assert not result.passed
+    assert result.metadata["no_nulls"].value is False
+
+def test_timestamp_should_always_be_after_2026():
+    check = _make_timestamp_check("battery_level")
+    result = check(_ts_df([datetime(2025, 12, 31, tzinfo=timezone.utc)]))
+    assert not result.passed
+    assert result.metadata["is_after_min_timestamp"].value is False
