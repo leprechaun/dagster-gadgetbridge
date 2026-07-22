@@ -8,6 +8,8 @@ Gadgetbridge syncs wearable data into a SQLite database on the phone and periodi
 
 All assets use `AutomationCondition.eager()` so downstream layers update automatically the moment their upstream data is ready.
 
+`medicine_log` is also rematerialized daily at 00:05 Asia/Bangkok by a schedule, independent of the CSV sensor. Its adherence data is computed through "today", so if the CSVs go untouched for a while, the eager condition alone would never rerun it and its cutoff would silently freeze at whatever day it last happened to run — the schedule keeps it advancing regardless.
+
 ## Asset layers
 
 The pipeline follows a medallion architecture: **raw → bronze → silver → gold**.
@@ -70,6 +72,8 @@ Tests live in `tests/` and run without any external dependencies — no S3, no D
 | `test_s3_sensor.py` | Cursor parsing and skip-vs-run decision logic for the SQLite S3 sensor |
 | `test_medicine_s3_sensor.py` | Cursor parsing and skip-vs-run decision logic for the medicine CSV sensor |
 | `test_owntracks_s3_sensor.py` | Month/partition-key derivation and affected-month run planning for the OwnTracks sensor |
+| `test_owntracks_bronze.py` | `.rec` line parsing: location filtering, malformed JSON/timestamps, optional fields |
+| `test_medicine_schedule.py` | `medicine_log` daily schedule's cron, timezone, default status, and asset selection |
 
 Run tests locally:
 
