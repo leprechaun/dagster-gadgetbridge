@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 import boto3
 
@@ -35,7 +36,9 @@ class FileS3IOManager(dg.ConfigurableIOManager):
 
     def load_input(self, context: InputContext) -> str:
         key = self._key(context.asset_key)
-        local_path = f"/tmp/{context.asset_key.path[-1]}{self.extension}"
+        run_id = context.get_identifier()[0]
+        tmp_dir = tempfile.mkdtemp(prefix=f"gadgetbridge-{run_id}-")
+        local_path = os.path.join(tmp_dir, f"{context.asset_key.path[-1]}{self.extension}")
         self._s3().download_file(self.bucket, key, local_path)
         context.log.info(f"Downloaded s3://{self.bucket}/{key} → {local_path}")
         return local_path

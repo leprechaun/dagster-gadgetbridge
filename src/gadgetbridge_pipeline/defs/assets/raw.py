@@ -1,9 +1,7 @@
 import dagster as dg
 from gadgetbridge_pipeline.defs.resources import S3ClientResource
 import os
-
-
-_SQLITE_LOCAL_PATH = "/tmp/gb.db"
+import tempfile
 
 
 @dg.asset(
@@ -18,16 +16,17 @@ def gadgetbridge_db_file(context: dg.AssetExecutionContext, s3: S3ClientResource
     etag = head["ETag"]
     last_modified = head["LastModified"].isoformat()
     context.log.info(f"S3 object  ETag={etag}  LastModified={last_modified}")
-    os.makedirs(os.path.dirname(_SQLITE_LOCAL_PATH) or ".", exist_ok=True)
-    context.log.info(f"Downloading s3://{s3.bucket}/{s3.key} → {_SQLITE_LOCAL_PATH}")
-    client.download_file(s3.bucket, s3.key, _SQLITE_LOCAL_PATH)
+    tmp_dir = tempfile.mkdtemp(prefix=f"gadgetbridge-{context.run_id}-")
+    local_path = os.path.join(tmp_dir, "gb.db")
+    context.log.info(f"Downloading s3://{s3.bucket}/{s3.key} → {local_path}")
+    client.download_file(s3.bucket, s3.key, local_path)
     return dg.Output(
-        value=_SQLITE_LOCAL_PATH,
+        value=local_path,
         metadata={
             "s3_bucket": s3.bucket,
             "s3_key": s3.key,
             "s3_etag": etag,
             "s3_last_modified": last_modified,
-            "size_bytes": os.path.getsize(_SQLITE_LOCAL_PATH),
+            "size_bytes": os.path.getsize(local_path),
         },
     )
