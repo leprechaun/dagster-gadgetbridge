@@ -55,9 +55,7 @@ Blocking asset check on `daily_sleep_duration`, defined as a [pandera](https://p
 | `daily_health_snapshot` | Per-day averages for HRV, SpO2, stress, temperature, and heart rate percentiles (p10/median/p90) |
 | `steps_per_day` | Daily step totals with weekday/weekend flag |
 | `steps_vs_stress` | Daily step totals joined with average and median stress, for correlation analysis |
-| `weekday_heart_rate_distribution_before_and_after` | Normalized weekday heart rate distribution split before and after a reference date (2026-05-24) |
 | `heart_rate_distribution_by_medication_and_weekday` | Heart rate distribution grouped by active medication state and weekday vs. weekend |
-| `daily_medicine_adherence` | Gold-layer copy of `medicine_log` for joining with health metrics |
 
 ## Tests
 
