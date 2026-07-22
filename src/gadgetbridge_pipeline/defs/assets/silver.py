@@ -14,7 +14,8 @@ from dagster import AutomationCondition, Definitions, AssetCheckResult
     io_manager_key="deltalake_io_manager",
     ins={
         "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
-    }
+    },
+    automation_condition=AutomationCondition.eager(),
 )
 def sleep_periods_based_on_activity(activity: pl.DataFrame):
     sleep_periods = (
