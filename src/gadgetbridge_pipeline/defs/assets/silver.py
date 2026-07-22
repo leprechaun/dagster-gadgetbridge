@@ -21,6 +21,7 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
         activity.with_columns(
             pl.col("TIMESTAMP").dt.convert_time_zone("Asia/Bangkok")
         )
+        .sort(by="TIMESTAMP")
         .select(
             ["TIMESTAMP", "RAW_KIND"]
         )
