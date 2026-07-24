@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timezone
-from gadgetbridge_pipeline.defs.assets.owntracks_bronze import parse_rec_lines
+from gadgetbridge_pipeline.defs.assets.owntracks_bronze import parse_rec_lines, parse_waypoint
 
 
 def _line(tst: int, lat: float, lon: float, arrived_at: str = "2026-07-01T00:00:00Z", **extra) -> str:
@@ -103,3 +103,54 @@ def test_parse_drops_corrupted_arrived_at():
     records, dropped = parse_rec_lines(lines, user="alice", device="phone")
     assert len(records) == 1
     assert len(dropped) == 1
+
+
+def _waypoint_json(**extra) -> bytes:
+    payload = {
+        "_type": "waypoint",
+        "_id": "3fbee5a5",
+        "desc": "coffee shop",
+        "lon": 2.3522,
+        "lat": 48.8566,
+        "tst": 1784888589,
+        "rad": 50,
+        "topic": "owntracks/alice/phone/waypoint",
+        "username": "alice",
+        "device": "phone",
+        "ghash": "u09tvw0",
+        **extra,
+    }
+    return json.dumps(payload).encode()
+
+
+def test_parse_waypoint_basic():
+    record = parse_waypoint(_waypoint_json(), user="alice", device="phone")
+    assert record["id"] == "3fbee5a5"
+    assert record["user"] == "alice"
+    assert record["device"] == "phone"
+    assert record["name"] == "coffee shop"
+    assert record["lat"] == 48.8566
+    assert record["lon"] == 2.3522
+    assert record["radius_m"] == 50
+    assert record["tst"] == 1784888589
+    assert record["ghash"] == "u09tvw0"
+
+
+def test_parse_waypoint_uses_path_user_device_not_payload():
+    # path-derived user/device should win, same convention as parse_rec_lines
+    record = parse_waypoint(
+        _waypoint_json(username="someone-else", device="other-device"),
+        user="alice",
+        device="phone",
+    )
+    assert record["user"] == "alice"
+    assert record["device"] == "phone"
+
+
+def test_parse_waypoint_rejects_non_waypoint_type():
+    payload = json.dumps({"_type": "location", "tst": 1}).encode()
+    assert parse_waypoint(payload, user="alice", device="phone") is None
+
+
+def test_parse_waypoint_rejects_malformed_json():
+    assert parse_waypoint(b"not-valid-json", user="alice", device="phone") is None
