@@ -304,8 +304,14 @@ def waypoints(context: AssetExecutionContext) -> pl.DataFrame:
 def waypoints_radius_positive(waypoints: pl.DataFrame) -> AssetCheckResult:
     if waypoints.is_empty():
         return AssetCheckResult(passed=True, metadata={"row_count": 0})
-    minimum = float(waypoints["radius_m"].min())
-    return AssetCheckResult(passed=minimum > 0, metadata={"minimum": minimum})
+    null_count = int(waypoints["radius_m"].null_count())
+    non_null = waypoints["radius_m"].drop_nulls()
+    minimum = float(non_null.min()) if len(non_null) > 0 else None
+    passed = null_count == 0 and minimum is not None and minimum > 0
+    return AssetCheckResult(
+        passed=passed,
+        metadata={"minimum": minimum, "null_count": null_count},
+    )
 
 
 defs = Definitions(

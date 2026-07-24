@@ -1,6 +1,13 @@
 import json
 from datetime import datetime, timezone
-from gadgetbridge_pipeline.defs.assets.owntracks_bronze import parse_rec_lines, parse_waypoint
+
+import polars as pl
+
+from gadgetbridge_pipeline.defs.assets.owntracks_bronze import (
+    parse_rec_lines,
+    parse_waypoint,
+    waypoints_radius_positive,
+)
 
 
 def _line(tst: int, lat: float, lon: float, arrived_at: str = "2026-07-01T00:00:00Z", **extra) -> str:
@@ -154,3 +161,40 @@ def test_parse_waypoint_rejects_non_waypoint_type():
 
 def test_parse_waypoint_rejects_malformed_json():
     assert parse_waypoint(b"not-valid-json", user="alice", device="phone") is None
+
+
+def _radius_df(values: list[float | None]) -> pl.DataFrame:
+    return pl.DataFrame({"radius_m": pl.Series("radius_m", values, dtype=pl.Float64)})
+
+
+def test_waypoints_radius_positive_passes_when_empty():
+    result = waypoints_radius_positive(pl.DataFrame(schema={"radius_m": pl.Float64}))
+    assert result.passed
+
+
+def test_waypoints_radius_positive_passes_when_all_positive():
+    result = waypoints_radius_positive(_radius_df([50.0, 100.0]))
+    assert result.passed
+    assert result.metadata["minimum"].value == 50.0
+    assert result.metadata["null_count"].value == 0
+
+
+def test_waypoints_radius_positive_fails_when_non_positive():
+    result = waypoints_radius_positive(_radius_df([50.0, 0.0]))
+    assert not result.passed
+
+
+def test_waypoints_radius_positive_fails_when_some_radius_null():
+    # rad is an optional OwnTracks field — a partially-null column must fail,
+    # not silently ignore the null via min()'s default null-skipping behavior.
+    result = waypoints_radius_positive(_radius_df([50.0, None]))
+    assert not result.passed
+    assert result.metadata["null_count"].value == 1
+
+
+def test_waypoints_radius_positive_fails_when_all_radius_null():
+    # previously crashed with TypeError: float(None) when every row was null
+    result = waypoints_radius_positive(_radius_df([None, None]))
+    assert not result.passed
+    assert result.metadata["minimum"].value is None
+    assert result.metadata["null_count"].value == 2
