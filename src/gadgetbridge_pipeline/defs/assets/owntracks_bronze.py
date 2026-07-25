@@ -2,10 +2,11 @@ import json
 import os
 from datetime import datetime
 
-import boto3
 import polars as pl
 import dagster as dg
 from dagster import Definitions, AssetExecutionContext, AssetCheckResult, MonthlyPartitionsDefinition
+
+from gadgetbridge_pipeline.defs.resources import S3ClientResource
 
 _BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PREFIX = "owntracks/raw/rec/"
@@ -56,10 +57,6 @@ _SCHEMA = pl.Schema({
     "source":     pl.String,
     "m":          pl.Int64,
 })
-
-
-def _s3_client():
-    return boto3.client("s3", endpoint_url=os.environ.get("AWS_ENDPOINT_URL_S3"))
 
 
 def parse_rec_lines(lines: list[str], user: str, device: str) -> tuple[list[dict], list[str]]:
@@ -140,12 +137,12 @@ def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
     op_tags={"dagster/concurrency_key": "owntracks_deltalake"},
     description="Parsed OwnTracks location records, written to Delta Lake via partition_expr on year_month.",
 )
-def location_records(context: AssetExecutionContext) -> pl.DataFrame:
+def location_records(context: AssetExecutionContext, s3: S3ClientResource) -> pl.DataFrame:
     # partition_key is "2026-07-01"; filenames use "2026-07"
     partition_key = context.partition_key
     year_month = partition_key[:7]
 
-    client = _s3_client()
+    client = s3.get_client()
     paginator = client.get_paginator("list_objects_v2")
 
     all_records: list[dict] = []
@@ -255,8 +252,8 @@ def _transform_waypoints(records: list[dict]) -> pl.DataFrame:
     key_prefix=["owntracks", "bronze"],
     description="OwnTracks waypoints (user-defined points of interest with a radius), one JSON file per waypoint.",
 )
-def waypoints(context: AssetExecutionContext) -> pl.DataFrame:
-    client = _s3_client()
+def waypoints(context: AssetExecutionContext, s3: S3ClientResource) -> pl.DataFrame:
+    client = s3.get_client()
     paginator = client.get_paginator("list_objects_v2")
 
     records: list[dict] = []

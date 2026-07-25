@@ -16,7 +16,6 @@ import hashlib
 import json
 import os
 
-import boto3
 from botocore.exceptions import ClientError
 from dagster import (
     AssetKey,
@@ -28,13 +27,10 @@ from dagster import (
     SkipReason,
     sensor,
 )
+from gadgetbridge_pipeline.defs.resources import S3ClientResource
 
 _BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PREFIX = "owntracks/raw/waypoints/"
-
-
-def _s3_client():
-    return boto3.client("s3", endpoint_url=os.environ.get("AWS_ENDPOINT_URL_S3"))
 
 
 def plan_run_request(current: dict[str, str], previous: dict[str, str]) -> dict | None:
@@ -56,8 +52,8 @@ def plan_run_request(current: dict[str, str], previous: dict[str, str]) -> dict 
         AssetKey(["owntracks", "bronze", "waypoints"])
     ),
 )
-def waypoints_s3_sensor(context: SensorEvaluationContext):
-    client = _s3_client()
+def waypoints_s3_sensor(context: SensorEvaluationContext, s3: S3ClientResource):
+    client = s3.get_client()
 
     try:
         paginator = client.get_paginator("list_objects_v2")
