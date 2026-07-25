@@ -77,5 +77,9 @@ defs = Definitions(
             root_uri=f"s3://{_deltalake_bucket}/owntracks/",
             storage_options=_s3_config,
         ),
+        "poi_deltalake_io_manager": DeltaLakePolarsIOManager(
+            root_uri=f"s3://{_deltalake_bucket}/poi/",
+            storage_options=_s3_config,
+        ),
     }
 )
