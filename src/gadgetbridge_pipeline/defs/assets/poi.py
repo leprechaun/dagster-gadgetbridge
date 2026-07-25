@@ -175,6 +175,7 @@ def points_of_interest(context: dg.AssetExecutionContext, s3: S3ClientResource) 
     asset=dg.AssetKey(["poi", "bronze", "points_of_interest"]),
     blocking=True,
     name="poi_names_unique",
+    description="Every POI name is unique — name is the only stable identity we have from the GeoJSON source.",
 )
 def poi_names_unique(points_of_interest: pl.DataFrame) -> AssetCheckResult:
     if points_of_interest.is_empty():
@@ -188,6 +189,7 @@ def poi_names_unique(points_of_interest: pl.DataFrame) -> AssetCheckResult:
     asset=dg.AssetKey(["poi", "bronze", "points_of_interest"]),
     blocking=True,
     name="poi_kind_valid",
+    description="Every POI has a kind, and it's one of the allowed tiers (point-of-interest, area, region, territory).",
 )
 def poi_kind_valid(points_of_interest: pl.DataFrame) -> AssetCheckResult:
     if points_of_interest.is_empty():
@@ -204,6 +206,7 @@ def poi_kind_valid(points_of_interest: pl.DataFrame) -> AssetCheckResult:
     asset=dg.AssetKey(["poi", "bronze", "points_of_interest"]),
     blocking=True,
     name="poi_circle_radius_positive",
+    description="Every circle (Point) POI has a non-null, positive radius_m — required to test whether a location falls inside it.",
 )
 def poi_circle_radius_positive(points_of_interest: pl.DataFrame) -> AssetCheckResult:
     circles = points_of_interest.filter(pl.col("geometry_type") == "circle")
@@ -219,6 +222,7 @@ def poi_circle_radius_positive(points_of_interest: pl.DataFrame) -> AssetCheckRe
     asset=dg.AssetKey(["poi", "bronze", "points_of_interest"]),
     blocking=True,
     name="poi_rectangle_bounds_valid",
+    description="Every rectangle POI has non-null, correctly ordered lon/lat bounds (min < max on both axes).",
 )
 def poi_rectangle_bounds_valid(points_of_interest: pl.DataFrame) -> AssetCheckResult:
     rects = points_of_interest.filter(pl.col("geometry_type") == "rectangle")
@@ -237,6 +241,7 @@ def poi_rectangle_bounds_valid(points_of_interest: pl.DataFrame) -> AssetCheckRe
     asset=dg.AssetKey(["poi", "bronze", "points_of_interest"]),
     blocking=True,
     name="poi_no_same_kind_overlap",
+    description="No two rectangles of the same kind overlap (e.g. two regions shouldn't double-cover the same ground) — different kinds may nest freely.",
 )
 def poi_no_same_kind_overlap(points_of_interest: pl.DataFrame) -> AssetCheckResult:
     rects = points_of_interest.filter(pl.col("geometry_type") == "rectangle")
