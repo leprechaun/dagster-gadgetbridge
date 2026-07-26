@@ -20,14 +20,14 @@ def join_location_poi(location_records: pl.DataFrame, poi: pl.DataFrame) -> pl.D
     """Attach the names of any POIs (circles or axis-aligned rectangles) each
     location record falls within.
 
-    Circles: haversine distance from the record to the POI <= radius_m (same
-    test as waypoints). Rectangles: the record's lat/lon fall within
+    Circles: haversine distance from the record to the POI <= radius_m.
+    Rectangles: the record's lat/lon fall within
     [lon_min, lon_max] x [lat_min, lat_max] (inclusive).
 
     POI kinds can nest (a point-of-interest inside an area inside a region),
     so a location can match several POIs of different kinds at once. Matches
     are aggregated into a deduplicated, sorted `poi_names` list per location
-    record, same shape as `waypoint_names`.
+    record.
     """
     if location_records.is_empty():
         return location_records.with_columns(

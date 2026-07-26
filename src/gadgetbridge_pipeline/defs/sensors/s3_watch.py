@@ -13,7 +13,7 @@ project:
     suffix and diff the resulting {key: etag} map against the cursor.
     Optionally groups matches (e.g. by month) into separate, optionally
     partitioned run requests. Used by sensors that watch a whole folder of
-    files (OwnTracks .rec files, waypoint JSON files).
+    files (OwnTracks .rec files).
 
 Both factories share cursor parsing and run-key hashing so the actual S3
 polling, cursor handling, and skip/run decision logic exists exactly once.

@@ -4,7 +4,7 @@ from datetime import datetime
 
 import polars as pl
 import dagster as dg
-from dagster import Definitions, AssetExecutionContext, AssetCheckResult, MonthlyPartitionsDefinition
+from dagster import Definitions, AssetExecutionContext, MonthlyPartitionsDefinition
 
 from gadgetbridge_pipeline.defs.resources import S3ClientResource
 
@@ -183,135 +183,6 @@ def location_records(context: AssetExecutionContext, s3: S3ClientResource) -> pl
     return _transform(all_records, partition_key)
 
 
-_WAYPOINTS_PREFIX = "owntracks/raw/waypoints/"
-
-_WAYPOINTS_RAW_SCHEMA = pl.Schema({
-    "id":       pl.String,
-    "user":     pl.String,
-    "device":   pl.String,
-    "name":     pl.String,
-    "lat":      pl.Float64,
-    "lon":      pl.Float64,
-    "radius_m": pl.Float64,
-    "tst":      pl.Int64,
-    "ghash":    pl.String,
-})
-
-_WAYPOINTS_SCHEMA = pl.Schema({
-    "id":        pl.String,
-    "user":      pl.String,
-    "device":    pl.String,
-    "name":      pl.String,
-    "lat":       pl.Float64,
-    "lon":       pl.Float64,
-    "radius_m":  pl.Float64,
-    "timestamp": pl.Datetime(time_unit="us", time_zone="UTC"),
-    "ghash":     pl.String,
-})
-
-
-def parse_waypoint(body: bytes, user: str, device: str) -> dict | None:
-    """Parse a single OwnTracks waypoint JSON file into a raw dict.
-
-    Returns None if the payload isn't valid JSON or isn't a waypoint.
-    """
-    try:
-        payload = json.loads(body)
-    except json.JSONDecodeError:
-        return None
-    if payload.get("_type") != "waypoint":
-        return None
-    return {
-        "id":       payload.get("_id"),
-        "user":     user,
-        "device":   device,
-        "name":     payload.get("desc"),
-        "lat":      payload.get("lat"),
-        "lon":      payload.get("lon"),
-        "radius_m": payload.get("rad"),
-        "tst":      payload.get("tst"),
-        "ghash":    payload.get("ghash"),
-    }
-
-
-def _transform_waypoints(records: list[dict]) -> pl.DataFrame:
-    return (
-        pl.DataFrame(records, schema=_WAYPOINTS_RAW_SCHEMA)
-        .with_columns(
-            pl.from_epoch(pl.col("tst").cast(pl.Int64), time_unit="s")
-            .dt.replace_time_zone("UTC")
-            .alias("timestamp"),
-        )
-        .select(list(_WAYPOINTS_SCHEMA.keys()))
-    )
-
-
-@dg.asset(
-    group_name="owntracks",
-    io_manager_key="owntracks_deltalake_io_manager",
-    key_prefix=["owntracks", "bronze"],
-    description="OwnTracks waypoints (user-defined points of interest with a radius), one JSON file per waypoint.",
-)
-def waypoints(context: AssetExecutionContext, s3: S3ClientResource) -> pl.DataFrame:
-    client = s3.get_client()
-    paginator = client.get_paginator("list_objects_v2")
-
-    records: list[dict] = []
-    dropped: list[str] = []
-    files_read = 0
-
-    for page in paginator.paginate(Bucket=_BUCKET, Prefix=_WAYPOINTS_PREFIX):
-        for obj in page.get("Contents", []):
-            key: str = obj["Key"]
-            if not key.endswith(".json"):
-                continue
-            parts = key.split("/")
-            if len(parts) < 6:
-                context.log.warning(f"Skipping unexpected key shape: {key}")
-                continue
-            user, device = parts[3], parts[4]
-            body = client.get_object(Bucket=_BUCKET, Key=key)["Body"].read()
-            files_read += 1
-            record = parse_waypoint(body, user, device)
-            if record is None:
-                dropped.append(key)
-                context.log.warning(f"Skipping unparseable waypoint file: {key}")
-                continue
-            records.append(record)
-
-    context.log.info(f"Total: {len(records)} waypoints, {len(dropped)} dropped, from {files_read} file(s)")
-
-    context.add_output_metadata({
-        "waypoints": len(records),
-        "dropped": len(dropped),
-        "files": files_read,
-    })
-
-    if not records:
-        return pl.DataFrame(schema=_WAYPOINTS_SCHEMA)
-
-    return _transform_waypoints(records)
-
-
-@dg.asset_check(
-    asset=dg.AssetKey(["owntracks", "bronze", "waypoints"]),
-    blocking=True,
-    name="waypoints_radius_positive",
-)
-def waypoints_radius_positive(waypoints: pl.DataFrame) -> AssetCheckResult:
-    if waypoints.is_empty():
-        return AssetCheckResult(passed=True, metadata={"row_count": 0})
-    null_count = int(waypoints["radius_m"].null_count())
-    non_null = waypoints["radius_m"].drop_nulls()
-    minimum = float(non_null.min()) if len(non_null) > 0 else None
-    passed = null_count == 0 and minimum is not None and minimum > 0
-    return AssetCheckResult(
-        passed=passed,
-        metadata={"minimum": minimum, "null_count": null_count},
-    )
-
-
 defs = Definitions(
-    assets=[location_records, waypoints],
-    asset_checks=[waypoints_radius_positive],
+    assets=[location_records],
 )
