@@ -3,6 +3,12 @@ import dagster as dg
 import datetime
 from dagster import AutomationCondition, Definitions
 
+
+def _is_weekend(date_col: str) -> pl.Expr:
+    """True for Saturday/Sunday. ISO weekday: Monday=1 .. Sunday=7."""
+    return pl.col(date_col).dt.weekday() >= 6
+
+
 @dg.asset(
     group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
@@ -25,7 +31,7 @@ def steps_per_day(activity):
         ).with_columns(
             pl.col("date").dt.weekday().alias("weekday"),
         ).with_columns(
-            (pl.col("weekday") > 5).alias("is_weekend")
+            _is_weekend("date").alias("is_weekend")
         )
     )
 
@@ -121,7 +127,7 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
         .sort("date")
         .with_columns(
             pl.col("date").dt.weekday().alias("weekday"),
-            (pl.col("date").dt.weekday() > 5).alias("is_weekend"),
+            _is_weekend("date").alias("is_weekend"),
         )
     )
 
@@ -153,7 +159,7 @@ def heart_rate_distribution_by_medication_and_weekday(
         .join(medication_by_date, on="date", how="left")
         .with_columns(
             pl.col("medication_state").fill_null("sober"),
-            (pl.col("date").dt.weekday() >= 6).alias("is_weekend"),
+            _is_weekend("date").alias("is_weekend"),
         )
         .group_by(["heart_rate", "medication_state", "is_weekend"])
         .agg(pl.col("sample_count").sum())
@@ -189,7 +195,7 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
         .select(["reporting_date", "start", "end"])
         .sort(by="reporting_date")
         .with_columns(
-            (pl.col("reporting_date").dt.weekday() >= 6).alias("is_weekend")
+            _is_weekend("reporting_date").alias("is_weekend")
         )
         .with_columns(
             pl.lit(COMMON_DATE).dt.combine(pl.col("start").dt.time()).alias("start"),

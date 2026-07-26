@@ -1,7 +1,24 @@
 import datetime
 import polars as pl
 from datetime import datetime as dt
-from gadgetbridge_pipeline.defs.assets.gold import daily_health_snapshot, daily_sleep_schedule
+from gadgetbridge_pipeline.defs.assets.gold import _is_weekend, daily_health_snapshot, daily_sleep_schedule
+
+
+# ---------------------------------------------------------------------------
+# _is_weekend
+# ---------------------------------------------------------------------------
+
+def test_is_weekend_true_for_saturday_and_sunday_false_for_weekdays():
+    df = pl.DataFrame({
+        "date": [
+            datetime.date(2024, 1, 15),  # Monday
+            datetime.date(2024, 1, 19),  # Friday
+            datetime.date(2024, 1, 20),  # Saturday
+            datetime.date(2024, 1, 21),  # Sunday
+        ],
+    })
+    result = df.select(_is_weekend("date").alias("is_weekend"))["is_weekend"].to_list()
+    assert result == [False, False, True, True]
 
 
 def test_daily_health_snapshot_joins_and_averages():
