@@ -12,6 +12,9 @@ from dagster_openlineage import openlineage_sensor
 
 _deltalake_bucket = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 
+GADGETBRIDGE_DB_BUCKET = "android-backups"
+GADGETBRIDGE_DB_KEY = "GadgetBridge/Gadgetbridge.db"
+
 class FileS3IOManager(dg.ConfigurableIOManager):
     """Round-trips a local file through S3 so downstream pods can load it.
 
@@ -60,8 +63,8 @@ defs = Definitions(
     resources={
         "s3": S3ClientResource(
             endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
-            bucket="android-backups",
-            key="GadgetBridge/Gadgetbridge.db",
+            bucket=GADGETBRIDGE_DB_BUCKET,
+            key=GADGETBRIDGE_DB_KEY,
         ),
         "sqlite_s3_io_manager": FileS3IOManager(
             bucket=_deltalake_bucket,
