@@ -1,7 +1,14 @@
 import datetime
 import polars as pl
 from datetime import datetime as dt
-from gadgetbridge_pipeline.defs.assets.gold import _is_weekend, daily_health_snapshot, daily_sleep_schedule
+from gadgetbridge_pipeline.defs.assets.gold import (
+    _is_weekend,
+    daily_health_snapshot,
+    daily_sleep_schedule,
+    heart_rate_distribution_by_medication_and_weekday,
+    steps_per_day,
+    steps_vs_stress,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -36,6 +43,158 @@ def test_daily_health_snapshot_joins_and_averages():
     assert result.shape[0] == 1
     assert result["avg_hrv"][0] == 50.0
     assert result["avg_spo2"][0] == 97.0
+
+
+# ---------------------------------------------------------------------------
+# steps_per_day
+# ---------------------------------------------------------------------------
+
+def _activity_steps(*rows):
+    # each row: (timestamp_str, steps)
+    return pl.DataFrame({
+        "TIMESTAMP": [dt.fromisoformat(r[0]) for r in rows],
+        "STEPS": [r[1] for r in rows],
+    })
+
+
+def test_steps_per_day_sums_steps_within_a_day():
+    activity = _activity_steps(
+        ("2024-01-15 08:00:00", 100),
+        ("2024-01-15 09:00:00", 200),
+        ("2024-01-16 08:00:00", 50),
+    )
+    result = steps_per_day(activity).sort("date")
+    assert result["STEPS"].to_list() == [300, 50]
+
+
+def test_steps_per_day_is_weekend_flag():
+    activity = _activity_steps(
+        ("2024-01-15 08:00:00", 100),  # Monday
+        ("2024-01-20 08:00:00", 100),  # Saturday
+    )
+    result = steps_per_day(activity).sort("date")
+    assert result["is_weekend"].to_list() == [False, True]
+
+
+# ---------------------------------------------------------------------------
+# steps_vs_stress
+# ---------------------------------------------------------------------------
+
+def _stress_samples(*rows):
+    # each row: (timestamp_str, stress)
+    return pl.DataFrame({
+        "TIMESTAMP": [dt.fromisoformat(r[0]) for r in rows],
+        "STRESS": [r[1] for r in rows],
+    })
+
+
+def test_steps_vs_stress_totals_and_stress_stats():
+    activity = _activity_steps(
+        ("2024-01-15 08:00:00", 100),
+        ("2024-01-15 09:00:00", 200),
+    )
+    stress = _stress_samples(
+        ("2024-01-15 08:00:00", 20.0),
+        ("2024-01-15 09:00:00", 40.0),
+    )
+    result = steps_vs_stress(activity, stress)
+    assert result["total_steps"][0] == 300
+    assert result["avg_stress"][0] == 30.0
+    assert result["median_stress"][0] == 30.0
+
+
+def test_steps_vs_stress_inner_joins_only_days_present_in_both():
+    activity = _activity_steps(
+        ("2024-01-15 08:00:00", 100),
+        ("2024-01-16 08:00:00", 100),
+    )
+    stress = _stress_samples(
+        ("2024-01-15 08:00:00", 20.0),
+    )
+    result = steps_vs_stress(activity, stress)
+    assert result["date"].to_list() == [datetime.date(2024, 1, 15)]
+
+
+# ---------------------------------------------------------------------------
+# heart_rate_distribution_by_medication_and_weekday
+# ---------------------------------------------------------------------------
+
+def _hr_distribution(*rows):
+    # each row: (date, heart_rate, sample_count)
+    return pl.DataFrame({
+        "date": [r[0] for r in rows],
+        "heart_rate": [r[1] for r in rows],
+        "sample_count": [r[2] for r in rows],
+    })
+
+
+def _medicine_log(*rows):
+    # each row: (date, medicine, taken)
+    return pl.DataFrame({
+        "date": [r[0] for r in rows],
+        "medicine": [r[1] for r in rows],
+        "taken": [r[2] for r in rows],
+    })
+
+
+def test_heart_rate_distribution_defaults_to_sober_with_no_matching_medication():
+    hr = _hr_distribution((datetime.date(2024, 1, 15), 60, 10))
+    med = _medicine_log((datetime.date(2024, 1, 16), "aspirin", True))
+    result = heart_rate_distribution_by_medication_and_weekday(hr, med)
+    assert result["medication_state"].to_list() == ["sober"]
+
+
+def test_heart_rate_distribution_ignores_untaken_medicine():
+    hr = _hr_distribution((datetime.date(2024, 1, 15), 60, 10))
+    med = _medicine_log((datetime.date(2024, 1, 15), "aspirin", False))
+    result = heart_rate_distribution_by_medication_and_weekday(hr, med)
+    assert result["medication_state"].to_list() == ["sober"]
+
+
+def test_heart_rate_distribution_combines_multiple_medicines_taken_same_day_sorted():
+    hr = _hr_distribution((datetime.date(2024, 1, 15), 60, 10))
+    med = _medicine_log(
+        (datetime.date(2024, 1, 15), "zolpidem", True),
+        (datetime.date(2024, 1, 15), "aspirin", True),
+    )
+    result = heart_rate_distribution_by_medication_and_weekday(hr, med)
+    assert result["medication_state"].to_list() == ["aspirin + zolpidem"]
+
+
+def test_heart_rate_distribution_aggregates_across_dates_within_same_group():
+    hr = _hr_distribution(
+        (datetime.date(2024, 1, 15), 60, 10),  # Monday
+        (datetime.date(2024, 1, 22), 60, 5),   # next Monday
+    )
+    med = _medicine_log(
+        (datetime.date(2024, 1, 15), "aspirin", True),
+        (datetime.date(2024, 1, 22), "aspirin", True),
+    )
+    result = heart_rate_distribution_by_medication_and_weekday(hr, med)
+    assert result["sample_count"].to_list() == [15]
+
+
+def test_heart_rate_distribution_proportion_normalized_within_group():
+    hr = _hr_distribution(
+        (datetime.date(2024, 1, 15), 60, 30),
+        (datetime.date(2024, 1, 15), 70, 10),
+    )
+    med = _medicine_log((datetime.date(2099, 1, 1), "placeholder", True))
+    result = heart_rate_distribution_by_medication_and_weekday(hr, med).sort("heart_rate")
+    assert result["proportion"].to_list() == [0.75, 0.25]
+
+
+def test_heart_rate_distribution_is_weekend_flag():
+    hr = _hr_distribution(
+        (datetime.date(2024, 1, 15), 60, 10),  # Monday
+        (datetime.date(2024, 1, 20), 60, 10),  # Saturday
+    )
+    med = _medicine_log(
+        (datetime.date(2024, 1, 15), "aspirin", True),
+        (datetime.date(2024, 1, 20), "aspirin", True),
+    )
+    result = heart_rate_distribution_by_medication_and_weekday(hr, med).sort("is_weekend")
+    assert result["is_weekend"].to_list() == [False, True]
 
 
 # ---------------------------------------------------------------------------
