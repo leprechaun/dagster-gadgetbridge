@@ -1,3 +1,5 @@
+import sys
+
 import polars as pl
 import dagster as dg
 import datetime
@@ -10,9 +12,7 @@ def _is_weekend(date_col: str) -> pl.Expr:
 
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "gold"],
     ins={
         "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
     },
@@ -37,9 +37,7 @@ def steps_per_day(activity):
 
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "gold"],
     ins={
         "activity_sample": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
         "hrv":             dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_hrv_value_sample"])),
@@ -94,9 +92,7 @@ def daily_health_snapshot(
     return sorted_df
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "gold"],
     ins={
         "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
         "stress":   dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
@@ -133,9 +129,7 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
 
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "gold"],
     ins={
         "daily_heart_rate_distribution": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "daily_heart_rate_distribution"])),
         "medicine_log": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"])),
@@ -172,9 +166,7 @@ def heart_rate_distribution_by_medication_and_weekday(
 
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "gold"],
     ins={
         "sleep_periods": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])),
     },
@@ -209,4 +201,10 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-defs = Definitions(assets=[daily_health_snapshot, steps_per_day, steps_vs_stress, heart_rate_distribution_by_medication_and_weekday, daily_sleep_schedule])
+defs = Definitions(
+    assets=dg.load_assets_from_modules(
+        [sys.modules[__name__]],
+        group_name="gadgetbridge",
+        key_prefix=["gadgetbridge", "gold"],
+    ),
+)
