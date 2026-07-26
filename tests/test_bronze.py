@@ -55,6 +55,21 @@ def test_heartrate_checks_fails_both():
     assert result.metadata["is_255 or below"].value is False
 
 
+def test_heartrate_checks_fails_gracefully_on_empty_table():
+    result = activity_heartrate_checks(pl.DataFrame(schema={"HEART_RATE": pl.Int64}))
+    assert not result.passed
+    assert result.metadata["row_count"].value == 0
+
+
+def test_heartrate_checks_fails_gracefully_when_column_is_all_null():
+    # previously crashed with TypeError: int(None) when every row was null
+    df = pl.DataFrame({"HEART_RATE": pl.Series("HEART_RATE", [None, None], dtype=pl.Int64)})
+    result = activity_heartrate_checks(df)
+    assert not result.passed
+    assert result.metadata["row_count"].value == 2
+    assert result.metadata["null_count"].value == 2
+
+
 # battery_level — LEVEL in [0, 100]
 
 def test_battery_level_checks_passes():
@@ -104,6 +119,15 @@ def test_temperature_checks_fails_below_min():
 def test_temperature_checks_fails_above_max():
     result = temperature_checks(pl.DataFrame({"TEMPERATURE": [33.0, 42.1]}))
     assert not result.passed
+
+
+def test_temperature_checks_fails_gracefully_when_column_is_all_null():
+    # previously crashed with TypeError: float(None) when every row was null —
+    # same guard as heart rate, exercised here for the cast=float path
+    df = pl.DataFrame({"TEMPERATURE": pl.Series("TEMPERATURE", [None, None], dtype=pl.Float64)})
+    result = temperature_checks(df)
+    assert not result.passed
+    assert result.metadata["null_count"].value == 2
 
 
 # huami_stress_sample — STRESS in [1, 100]

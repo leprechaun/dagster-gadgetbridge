@@ -258,8 +258,11 @@ def _make_range_check(
     """Factory for a blocking min/max range check on a single column.
 
     `checks` maps a check name to a predicate over (minimum, maximum). Guards
-    against empty tables up front, since `cast(df[column].min())` raises
-    TypeError on None rather than failing the check gracefully.
+    against empty tables and all-null columns up front, since
+    `cast(df[column].min())` raises TypeError on None rather than failing the
+    check gracefully — an empty table trivially has a null min/max, but a
+    non-empty table whose column is entirely null hits the exact same
+    TypeError and needs the same guard.
     """
 
     @dg.asset_check(asset=dg.AssetKey(asset_key), blocking=True, name=name)
@@ -271,7 +274,15 @@ def _make_range_check(
                 metadata={"row_count": 0},
             )
 
-        minimum = cast(df[column].min())
+        raw_minimum = df[column].min()
+        if raw_minimum is None:
+            return AssetCheckResult(
+                passed=False,
+                description=f"No non-null {column!r} values to check (all null)",
+                metadata={"row_count": df.height, "null_count": int(df[column].null_count())},
+            )
+
+        minimum = cast(raw_minimum)
         maximum = cast(df[column].max())
 
         results = {check_name: fn(minimum, maximum) for check_name, fn in checks.items()}
