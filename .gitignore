@@ -138,6 +138,7 @@ celerybeat.pid
 .env
 .env.local
 .env.k8s
+.env.*
 .envrc
 .venv
 env/
