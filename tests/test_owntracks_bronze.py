@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from gadgetbridge_pipeline.defs.assets.owntracks_bronze import parse_rec_lines
+from gadgetbridge_pipeline.defs.assets.owntracks.bronze import parse_rec_lines
 
 
 def _line(tst: int, lat: float, lon: float, arrived_at: str = "2026-07-01T00:00:00Z", **extra) -> str:

@@ -2,7 +2,7 @@ import polars as pl
 import dagster as dg
 from dagster import AutomationCondition, Definitions
 
-from gadgetbridge_pipeline.defs.assets.owntracks_bronze import owntracks_partitions
+from gadgetbridge_pipeline.defs.assets.owntracks.bronze import owntracks_partitions
 
 _EARTH_RADIUS_M = 6_371_000
 

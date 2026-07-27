@@ -1,7 +1,7 @@
 import datetime
 import polars as pl
 from datetime import datetime as dt
-from gadgetbridge_pipeline.defs.assets.gold import (
+from gadgetbridge_pipeline.defs.assets.gadgetbridge.gold import (
     _is_weekend,
     daily_health_snapshot,
     daily_sleep_schedule,
