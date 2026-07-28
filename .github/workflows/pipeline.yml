@@ -24,6 +24,14 @@ jobs:
       - name: Run tests
         run: uv run pytest -v tests/
 
+      - name: Export coverage
+        run: uv run coverage lcov
+
+      - uses: qltysh/qlty-action/coverage@v2
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          files: coverage.lcov
+
   build-and-push:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
