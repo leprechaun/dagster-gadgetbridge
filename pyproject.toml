@@ -53,3 +53,6 @@ root_module = "gadgetbridge_pipeline"
 registry_modules = [
     "gadgetbridge_pipeline.components.*",
 ]
+
+[tool.ruff]
+exclude = ["*.nb.py"]

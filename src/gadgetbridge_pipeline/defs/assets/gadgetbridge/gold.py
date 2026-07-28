@@ -1,5 +1,3 @@
-import sys
-
 import polars as pl
 import dagster as dg
 import datetime
