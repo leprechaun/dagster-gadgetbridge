@@ -75,8 +75,6 @@ def _read_s3_csv(s3: S3ClientResource, key: str, **read_csv_kwargs) -> pl.DataFr
 
 @dg.asset(
     name="prescriptions",
-    group_name="gadgetbridge",
-    key_prefix=["gadgetbridge", "bronze"],
     io_manager_key="deltalake_io_manager",
     description="Prescriptions CSV mirrored from S3, versioned in Delta Lake.",
 )
@@ -86,8 +84,6 @@ def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
 
 @dg.asset(
     name="medicine_skips",
-    group_name="gadgetbridge",
-    key_prefix=["gadgetbridge", "bronze"],
     io_manager_key="deltalake_io_manager",
     description="Medicine skip records mirrored from S3, versioned in Delta Lake.",
 )
@@ -96,9 +92,7 @@ def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
 
 
 @dg.asset(
-    group_name="gadgetbridge",
     io_manager_key="deltalake_io_manager",
-    key_prefix=["gadgetbridge", "bronze"],
     description="Daily medication adherence log derived from prescriptions and skip records",
     automation_condition=AutomationCondition.eager(),
 )
@@ -171,7 +165,10 @@ def medicine_skips_not_in_future(medicine_skips: pl.DataFrame) -> AssetCheckResu
 
 
 defs = Definitions(
-    assets=[prescriptions, medicine_skips, medicine_log],
+    assets=dg.load_assets_from_current_module(
+        group_name="gadgetbridge",
+        key_prefix=["gadgetbridge", "bronze"]
+    ),
     asset_checks=[
         medicine_log_dosage_positive,
         medicine_skips_within_prescriptions,

@@ -22,12 +22,14 @@ def _read_table(table: str, db_path: str) -> pl.DataFrame:
         f"sqlite://{db_path}"
     )
 
+TYPE_DS_UTC_US = pl.Datetime(time_unit='us', time_zone='UTC')
+
 _TABLES = {
     "huami_extended_activity_sample": {
         "epoch_unit": "s",
         "description": "a wide table of per minute metrics including step count, sleep, vigor of movement, etc",
         "schema": pl.Schema({
-            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'RAW_INTENSITY': pl.Int64,
@@ -44,7 +46,7 @@ _TABLES = {
         "epoch_unit": "ms",
         "description": "temperature of the sensor",
         "schema": pl.Schema({
-            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'TEMPERATURE': pl.Float64,
@@ -67,7 +69,7 @@ _TABLES = {
         "epoch_unit": "ms",
         "description": "Heart rate variability",
         "schema": pl.Schema({
-            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'VALUE': pl.Int64
@@ -77,7 +79,7 @@ _TABLES = {
         "epoch_unit": "ms",
         "description": "A bad nmeasurement of stress, based on HRV. Inaccurate.",
         "schema": pl.Schema({
-            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'TYPE_NUM': pl.Int64,
@@ -88,7 +90,7 @@ _TABLES = {
         "epoch_unit": "ms",
         "description": "SPO2 samples: more often at night",
         "schema": pl.Schema({
-            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'TYPE_NUM': pl.Int64,
@@ -99,7 +101,7 @@ _TABLES = {
         "epoch_unit": "ms",
         "description": "Amazfit's calculation of the PAI health metric",
         "schema": pl.Schema({
-            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'UTC_OFFSET': pl.Int64,
@@ -116,7 +118,7 @@ _TABLES = {
     "battery_level": {
         "epoch_unit": "s",
         "schema": pl.Schema({
-            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
             'LEVEL': pl.Int64,
             'BATTERY_INDEX': pl.Int64
@@ -126,7 +128,7 @@ _TABLES = {
         "epoch_unit": "ms",
         "description": "sleep session with binary data. there can be overlapping sessions during the same day.",
         "schema": pl.Schema({
-            'TIMESTAMP': pl.Datetime(time_unit='us', time_zone='UTC'),
+            'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'DATA': pl.Binary
@@ -138,9 +140,7 @@ def _make_asset(table_name: str, settings: Dict[str, Any]):
 
     @dg.asset(
         name=table_name.lower(),
-        group_name="gadgetbridge",
         io_manager_key="deltalake_io_manager",
-        key_prefix=["gadgetbridge", "bronze"],
         automation_condition=AutomationCondition.eager(),
         description=settings.get('description')
     )
@@ -381,6 +381,9 @@ _checks.append(respiratory_rate_checks)
 
 
 defs = Definitions(
-    assets=_tables,
+    assets=dg.load_assets_from_current_module(
+        group_name="gadgetbridge",
+        key_prefix=["gadgetbridge", "bronze"],
+    ),
     asset_checks=_checks
 )

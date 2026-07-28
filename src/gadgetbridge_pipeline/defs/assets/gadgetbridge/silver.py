@@ -184,8 +184,7 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
 
 
 defs = Definitions(
-    assets=dg.load_assets_from_modules(
-        [sys.modules[__name__]],
+    assets=dg.load_assets_from_current_module(
         group_name="gadgetbridge",
         key_prefix=["gadgetbridge", "silver"],
     ),
