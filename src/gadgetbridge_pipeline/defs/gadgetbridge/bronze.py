@@ -1,10 +1,15 @@
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict
+from typing import Any
 
-import polars as pl
 import dagster as dg
-
-from dagster import AutomationCondition, Definitions, AssetExecutionContext, AssetCheckResult
+import polars as pl
+from dagster import (
+    AssetCheckResult,
+    AssetExecutionContext,
+    AutomationCondition,
+    Definitions,
+)
 
 START_OF_DATA_COLLECTION = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -136,7 +141,7 @@ _TABLES = {
     },
 }
 
-def _make_asset(table_name: str, settings: Dict[str, Any]):
+def _make_asset(table_name: str, settings: dict[str, Any]):
 
     @dg.asset(
         name=table_name.lower(),
@@ -158,12 +163,12 @@ def _make_asset(table_name: str, settings: Dict[str, Any]):
 
     return _asset
 
-def _make_asset_check(table_name: str, settings: Dict[str, Any]):
+def _make_asset_check(table_name: str, settings: dict[str, Any]):
 
     @dg.asset_check(
         asset=dg.AssetKey(["gadgetbridge", "bronze", table_name]),
         blocking=True,
-        name="%s_schema_matches_expectations" % table_name
+        name=f"{table_name}_schema_matches_expectations"
     )
     def _asset_check(df: pl.DataFrame) -> AssetCheckResult:
         expected_schema = _TABLES[table_name]['schema']
@@ -200,7 +205,7 @@ def _make_timestamp_check(table_name: str):
     @dg.asset_check(
         asset=dg.AssetKey(["gadgetbridge", "bronze", table_name]),
         blocking=True,
-        name="%s_timestamp_checks" % table_name
+        name=f"{table_name}_timestamp_checks"
     )
     def _asset_check(df: pl.DataFrame) -> AssetCheckResult:
         if "TIMESTAMP" not in df.columns or df.is_empty():
@@ -226,7 +231,7 @@ def _make_timestamp_check(table_name: str):
     return _asset_check
 
 
-def _make_bronze(table_name: str, settings: Dict[str, str]):
+def _make_bronze(table_name: str, settings: dict[str, str]):
     _asset = _make_asset(table_name, settings)
 
     checks = []
@@ -252,7 +257,7 @@ def _make_range_check(
     asset_key: list,
     name: str,
     column: str,
-    checks: Dict[str, Callable[[Any, Any], bool]],
+    checks: dict[str, Callable[[Any, Any], bool]],
     cast=int,
 ):
     """Factory for a blocking min/max range check on a single column.

@@ -1,17 +1,20 @@
-import pytest
-import polars as pl
 from datetime import datetime, timezone
+
+import polars as pl
+import pytest
+
 from gadgetbridge_pipeline.defs.gadgetbridge.bronze import (
-    apply_bronze_transform,
+    _make_timestamp_check,
     activity_heartrate_checks,
+    apply_bronze_transform,
     battery_level_checks,
-    spo2_checks,
-    temperature_checks,
-    stress_checks,
     hrv_checks,
     respiratory_rate_checks,
-    _make_timestamp_check,
+    spo2_checks,
+    stress_checks,
+    temperature_checks,
 )
+
 
 def _hr_df(values):
     return pl.DataFrame({"HEART_RATE": values})

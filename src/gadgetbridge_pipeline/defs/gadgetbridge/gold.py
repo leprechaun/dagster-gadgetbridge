@@ -1,6 +1,7 @@
-import polars as pl
-import dagster as dg
 import datetime
+
+import dagster as dg
+import polars as pl
 from dagster import AutomationCondition, Definitions
 
 
@@ -133,7 +134,7 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
         "medicine_log": dg.AssetIn(key=dg.AssetKey(["medicine", "bronze", "medicine_log"])),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Heart rate distribution normalized within each (medication_state × weekday/weekend) group",
+    description="Heart rate distribution normalized within each (medication_state x weekday/weekend) group",
 )
 def heart_rate_distribution_by_medication_and_weekday(
     daily_heart_rate_distribution: pl.DataFrame,

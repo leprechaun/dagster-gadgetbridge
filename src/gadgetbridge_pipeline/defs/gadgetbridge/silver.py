@@ -1,12 +1,11 @@
-import polars as pl
-import dagster as dg
 import datetime
 
+import dagster as dg
 import pandera.polars as pa
+import polars as pl
+from dagster import AssetCheckResult, AutomationCondition, Definitions
 from pandera.engines.polars_engine import DateTime
 from pandera.typing.polars import Series
-
-from dagster import AutomationCondition, Definitions, AssetCheckResult
 
 
 @dg.asset(

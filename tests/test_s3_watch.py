@@ -4,7 +4,6 @@ from gadgetbridge_pipeline.defs.s3_watch import (
     plan_prefix_run_requests,
 )
 
-
 # parse_json_cursor(cursor_str) — tolerant JSON parsing of the sensor cursor.
 
 def test_parse_json_cursor_none_is_empty():

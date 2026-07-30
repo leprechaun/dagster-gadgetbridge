@@ -1,6 +1,8 @@
 import datetime
-import polars as pl
 from datetime import datetime as dt
+
+import polars as pl
+
 from gadgetbridge_pipeline.defs.gadgetbridge.gold import (
     _is_weekend,
     daily_health_snapshot,
@@ -9,7 +11,6 @@ from gadgetbridge_pipeline.defs.gadgetbridge.gold import (
     steps_per_day,
     steps_vs_stress,
 )
-
 
 # ---------------------------------------------------------------------------
 # _is_weekend

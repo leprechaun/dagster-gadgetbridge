@@ -2,8 +2,8 @@ import io
 import json
 import os
 
-import polars as pl
 import dagster as dg
+import polars as pl
 from dagster import AssetCheckResult, Definitions
 
 from gadgetbridge_pipeline.defs.resources import S3ClientResource

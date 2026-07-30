@@ -1,7 +1,9 @@
-import dagster as dg
-from gadgetbridge_pipeline.defs.resources import S3ClientResource
 import os
 import tempfile
+
+import dagster as dg
+
+from gadgetbridge_pipeline.defs.resources import S3ClientResource
 
 
 @dg.asset(

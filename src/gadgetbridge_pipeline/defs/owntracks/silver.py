@@ -1,5 +1,5 @@
-import polars as pl
 import dagster as dg
+import polars as pl
 from dagster import AutomationCondition, Definitions
 
 from gadgetbridge_pipeline.defs.owntracks.bronze import owntracks_partitions

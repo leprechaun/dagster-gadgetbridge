@@ -13,7 +13,6 @@ from gadgetbridge_pipeline.defs.poi.bronze import (
     poi_rectangle_bounds_valid,
 )
 
-
 # parse_poi_feature — single GeoJSON feature -> POI row or None
 
 def _point(name="home", kind="poi", radius_m=None, **extra):

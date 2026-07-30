@@ -2,12 +2,10 @@ import os
 import tempfile
 
 import boto3
-
 import dagster as dg
 from dagster import Definitions, EnvVar, InputContext, OutputContext
 from dagster_deltalake import S3Config
 from dagster_deltalake_polars import DeltaLakePolarsIOManager
-
 from dagster_openlineage import openlineage_sensor
 
 _deltalake_bucket = os.environ.get("DELTALAKE_BUCKET", "deltalake")

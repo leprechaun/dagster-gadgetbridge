@@ -10,7 +10,10 @@ from __future__ import annotations
 
 from dagster import AssetSelection, Definitions
 
-from gadgetbridge_pipeline.defs.resources import GADGETBRIDGE_DB_BUCKET, GADGETBRIDGE_DB_KEY
+from gadgetbridge_pipeline.defs.resources import (
+    GADGETBRIDGE_DB_BUCKET,
+    GADGETBRIDGE_DB_KEY,
+)
 from gadgetbridge_pipeline.defs.s3_watch import make_object_watch_sensor
 
 s3_sensor = make_object_watch_sensor(

@@ -2,9 +2,9 @@ import json
 import os
 from datetime import datetime
 
-import polars as pl
 import dagster as dg
-from dagster import Definitions, AssetExecutionContext, MonthlyPartitionsDefinition
+import polars as pl
+from dagster import AssetExecutionContext, Definitions, MonthlyPartitionsDefinition
 
 from gadgetbridge_pipeline.defs.resources import S3ClientResource
 

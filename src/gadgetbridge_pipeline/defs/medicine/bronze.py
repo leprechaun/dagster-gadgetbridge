@@ -5,9 +5,16 @@ import os
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import polars as pl
 import dagster as dg
-from dagster import AssetCheckResult, AssetIn, AssetKey, AutomationCondition, Definitions
+import polars as pl
+from dagster import (
+    AssetCheckResult,
+    AssetIn,
+    AssetKey,
+    AutomationCondition,
+    Definitions,
+)
+
 from gadgetbridge_pipeline.defs.resources import S3ClientResource
 
 _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
@@ -137,7 +144,9 @@ def medicine_skips_within_prescriptions(
 ) -> AssetCheckResult:
     if medicine_skips.is_empty():
         return AssetCheckResult(passed=True, metadata={"skip_count": 0, "orphaned_skips": "[]"})
-    ranges = list(zip(prescriptions["start_date"].to_list(), prescriptions["end_date"].to_list()))
+    ranges = list(
+        zip(prescriptions["start_date"].to_list(), prescriptions["end_date"].to_list(), strict=True)
+    )
     orphaned = [
         str(d) for d in medicine_skips["date"].to_list()
         if not any(start <= d and (end is None or d <= end) for start, end in ranges)

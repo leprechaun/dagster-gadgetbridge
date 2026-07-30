@@ -1,7 +1,14 @@
 import datetime
-import pytest
+
 import polars as pl
-from gadgetbridge_pipeline.defs.gadgetbridge.silver import per_minute_health_metrics, sleep_periods_based_on_activity, daily_sleep_duration, daily_sleep_duration_checks
+import pytest
+
+from gadgetbridge_pipeline.defs.gadgetbridge.silver import (
+    daily_sleep_duration,
+    daily_sleep_duration_checks,
+    per_minute_health_metrics,
+    sleep_periods_based_on_activity,
+)
 
 EXPECTED_COLUMNS = {
     "MINUTE", "DEVICE_ID", "USER_ID",
@@ -97,15 +104,15 @@ _S_USR = 99
 
 
 def _call(**kwargs):
-    defaults = dict(
-        activity=_activity(("2024-01-01 08:00:00", 1, 1)),
-        temperature=_temperature((_SENTINEL_TS, _S_DEV, _S_USR, 36.0)),
-        hrv=_hrv((_SENTINEL_TS, _S_DEV, _S_USR, 50)),
-        stress=_stress((_SENTINEL_TS, _S_DEV, _S_USR, 30)),
-        spo2=_spo2((_SENTINEL_TS, _S_DEV, _S_USR, 97)),
-        respiratory_rate=_respiratory_rate((_SENTINEL_TS, _S_DEV, _S_USR, 15)),
-        battery=_battery((_SENTINEL_TS, _S_DEV, 50)),
-    )
+    defaults = {
+        "activity": _activity(("2024-01-01 08:00:00", 1, 1)),
+        "temperature": _temperature((_SENTINEL_TS, _S_DEV, _S_USR, 36.0)),
+        "hrv": _hrv((_SENTINEL_TS, _S_DEV, _S_USR, 50)),
+        "stress": _stress((_SENTINEL_TS, _S_DEV, _S_USR, 30)),
+        "spo2": _spo2((_SENTINEL_TS, _S_DEV, _S_USR, 97)),
+        "respiratory_rate": _respiratory_rate((_SENTINEL_TS, _S_DEV, _S_USR, 15)),
+        "battery": _battery((_SENTINEL_TS, _S_DEV, 50)),
+    }
     defaults.update(kwargs)
     return per_minute_health_metrics(**defaults)
 

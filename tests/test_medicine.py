@@ -76,7 +76,7 @@ def test_empty_prescriptions_returns_empty_df():
 def test_skip_date_marks_taken_false():
     p = _prescriptions(("2026-01-05", "2026-01-07", _MED, 10.0))
     result = build_medicine_log(p, _skips("2026-01-06"), today=_TODAY)
-    taken = dict(zip(result["date"].to_list(), result["taken"].to_list()))
+    taken = dict(zip(result["date"].to_list(), result["taken"].to_list(), strict=True))
     assert taken[date(2026, 1, 5)] is True
     assert taken[date(2026, 1, 6)] is False
     assert taken[date(2026, 1, 7)] is True
