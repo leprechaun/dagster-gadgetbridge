@@ -103,7 +103,9 @@ def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
     description="Daily medication adherence log derived from prescriptions and skip records",
     automation_condition=AutomationCondition.eager(),
 )
-def medicine_log(context, prescriptions: pl.DataFrame, medicine_skips: pl.DataFrame) -> pl.DataFrame:
+def medicine_log(
+    context, prescriptions: pl.DataFrame, medicine_skips: pl.DataFrame
+) -> pl.DataFrame:
     df = build_medicine_log(prescriptions, medicine_skips, today=_today())
     context.log.info(f"Generated {df.shape[0]} medicine log rows")
     return df

@@ -303,11 +303,13 @@ def test_no_sleep_activity_returns_empty():
 # ---------------------------------------------------------------------------
 
 def _bkk(s):
-    return datetime.datetime.fromisoformat(s).replace(tzinfo=datetime.timezone(datetime.timedelta(hours=7)))
+    bangkok = datetime.timezone(datetime.timedelta(hours=7))
+    return datetime.datetime.fromisoformat(s).replace(tzinfo=bangkok)
 
 
 def _sleep_periods(*rows):
-    # each row: (reporting_date, start, end) — start/end as "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
+    # each row: (reporting_date, start, end) — start/end as
+    # "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
     return pl.DataFrame({
         "date":            [r[0] for r in rows],
         "reporting_date":  [r[0] for r in rows],
@@ -324,7 +326,8 @@ def test_daily_sleep_duration_output_schema():
         ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
     )
     result = daily_sleep_duration(periods)
-    assert set(result.columns) == {"reporting_date", "sleep_start", "wake_time", "total_sleep_minutes"}
+    expected_columns = {"reporting_date", "sleep_start", "wake_time", "total_sleep_minutes"}
+    assert set(result.columns) == expected_columns
 
 
 def test_daily_sleep_duration_single_period_duration_start_and_wake():
@@ -358,7 +361,8 @@ def test_daily_sleep_duration_multiple_nights_are_grouped_and_sorted_separately(
         ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
     )
     result = daily_sleep_duration(periods)
-    assert result["reporting_date"].to_list() == [datetime.date(2024, 1, 15), datetime.date(2024, 1, 16)]
+    expected_dates = [datetime.date(2024, 1, 15), datetime.date(2024, 1, 16)]
+    assert result["reporting_date"].to_list() == expected_dates
     assert result["total_sleep_minutes"].to_list() == [8 * 60, 7 * 60]
 
 

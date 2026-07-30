@@ -28,7 +28,9 @@ _POI_SCHEMA = {
 }
 
 
-def _poi_circle(name: str, lat: float, lon: float, radius_m, kind: str = "point-of-interest") -> dict:
+def _poi_circle(
+    name: str, lat: float, lon: float, radius_m, kind: str = "point-of-interest"
+) -> dict:
     return {
         "name": name, "kind": kind, "geometry_type": "circle",
         "lat": lat, "lon": lon, "radius_m": radius_m,
@@ -81,7 +83,9 @@ def test_excludes_poi_rectangle_not_containing_point():
 def test_rectangle_match_is_inclusive_of_boundary():
     # The point sits exactly on lon_max/lat_max — should still count as inside.
     loc = _locations(id=["a"], lat=[_EIFFEL_LAT], lon=[_EIFFEL_LON])
-    poi = _poi(_poi_rectangle("Edge", lon_min=2.0, lon_max=_EIFFEL_LON, lat_min=48.0, lat_max=_EIFFEL_LAT))
+    poi = _poi(
+        _poi_rectangle("Edge", lon_min=2.0, lon_max=_EIFFEL_LON, lat_min=48.0, lat_max=_EIFFEL_LAT)
+    )
     out = join_location_poi(loc, poi)
     assert out["region"].to_list() == ["Edge"]
 
@@ -92,7 +96,9 @@ def test_matches_nested_circle_and_rectangle_of_different_kinds():
     loc = _locations(id=["a"], lat=[_EIFFEL_LAT], lon=[_EIFFEL_LON])
     poi = _poi(
         _poi_circle("Eiffel Tower", _EIFFEL_LAT, _EIFFEL_LON, 100.0, kind="point-of-interest"),
-        _poi_rectangle("Paris", lon_min=2.0, lon_max=2.5, lat_min=48.5, lat_max=49.0, kind="region"),
+        _poi_rectangle(
+            "Paris", lon_min=2.0, lon_max=2.5, lat_min=48.5, lat_max=49.0, kind="region"
+        ),
     )
     out = join_location_poi(loc, poi)
     assert out["point_of_interest"].to_list() == [["Eiffel Tower"]]
@@ -102,8 +108,12 @@ def test_matches_nested_circle_and_rectangle_of_different_kinds():
 def test_matches_area_and_territory_kinds():
     loc = _locations(id=["a"], lat=[_EIFFEL_LAT], lon=[_EIFFEL_LON])
     poi = _poi(
-        _poi_rectangle("Le Gros Caillou", lon_min=2.0, lon_max=2.5, lat_min=48.5, lat_max=49.0, kind="area"),
-        _poi_rectangle("France", lon_min=-5.0, lon_max=10.0, lat_min=40.0, lat_max=51.0, kind="territory"),
+        _poi_rectangle(
+            "Le Gros Caillou", lon_min=2.0, lon_max=2.5, lat_min=48.5, lat_max=49.0, kind="area"
+        ),
+        _poi_rectangle(
+            "France", lon_min=-5.0, lon_max=10.0, lat_min=40.0, lat_max=51.0, kind="territory"
+        ),
     )
     out = join_location_poi(loc, poi)
     assert out["area"].to_list() == ["Le Gros Caillou"]

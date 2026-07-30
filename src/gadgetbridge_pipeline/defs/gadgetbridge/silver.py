@@ -11,7 +11,9 @@ from pandera.typing.polars import Series
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+        "activity": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
+        ),
     },
     automation_condition=AutomationCondition.eager(),
 )
@@ -50,10 +52,14 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "sleep_periods": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])),
+        "sleep_periods": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])
+        ),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Nightly sleep duration, start, and wake time, aggregated from individual sleep periods",
+    description=(
+        "Nightly sleep duration, start, and wake time, aggregated from individual sleep periods"
+    ),
 )
 def daily_sleep_duration(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     return (
@@ -109,13 +115,19 @@ def _by_minute(df: pl.DataFrame, col: str, alias: str, group_by: list[str]) -> p
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "activity":        dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
-        "temperature":     dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_temperature_sample"])),
-        "hrv":             dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_hrv_value_sample"])),
-        "stress":          dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
-        "spo2":            dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_spo2_sample"])),
-        "respiratory_rate": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_sleep_respiratory_rate_sample"])),
-        "battery":         dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"])),
+        "activity": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
+        ),
+        "temperature": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "generic_temperature_sample"])
+        ),
+        "hrv": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_hrv_value_sample"])),
+        "stress": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
+        "spo2": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_spo2_sample"])),
+        "respiratory_rate": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "huami_sleep_respiratory_rate_sample"])
+        ),
+        "battery": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"])),
     },
     automation_condition=AutomationCondition.eager(),
     description="Wide per-minute join of all bronze health metrics",
@@ -133,17 +145,21 @@ def per_minute_health_metrics(
         activity
         .with_columns(
             pl.col("TIMESTAMP").dt.truncate("1m").alias("MINUTE"),
-            pl.when(pl.col("HEART_RATE") == 255).then(None).otherwise(pl.col("HEART_RATE")).alias("HEART_RATE"),
+            pl.when(pl.col("HEART_RATE") == 255)
+            .then(None)
+            .otherwise(pl.col("HEART_RATE"))
+            .alias("HEART_RATE"),
         )
         .drop(["TIMESTAMP", "UNKNOWN1"])
     )
 
-    temp_min   = _by_minute(temperature,     "TEMPERATURE", "TEMPERATURE",      ["MINUTE", "DEVICE_ID", "USER_ID"])
-    hrv_min    = _by_minute(hrv,             "VALUE",       "HRV",              ["MINUTE", "DEVICE_ID", "USER_ID"])
-    stress_min = _by_minute(stress,          "STRESS",      "STRESS",           ["MINUTE", "DEVICE_ID", "USER_ID"])
-    spo2_min   = _by_minute(spo2,            "SPO2",        "SPO2",             ["MINUTE", "DEVICE_ID", "USER_ID"])
-    resp_min   = _by_minute(respiratory_rate,"RATE",        "RESPIRATORY_RATE", ["MINUTE", "DEVICE_ID", "USER_ID"])
-    batt_min   = _by_minute(battery,         "LEVEL",       "BATTERY_LEVEL",    ["MINUTE", "DEVICE_ID"])
+    minute_device_user = ["MINUTE", "DEVICE_ID", "USER_ID"]
+    temp_min = _by_minute(temperature, "TEMPERATURE", "TEMPERATURE", minute_device_user)
+    hrv_min = _by_minute(hrv, "VALUE", "HRV", minute_device_user)
+    stress_min = _by_minute(stress, "STRESS", "STRESS", minute_device_user)
+    spo2_min = _by_minute(spo2, "SPO2", "SPO2", minute_device_user)
+    resp_min = _by_minute(respiratory_rate, "RATE", "RESPIRATORY_RATE", minute_device_user)
+    batt_min = _by_minute(battery, "LEVEL", "BATTERY_LEVEL", ["MINUTE", "DEVICE_ID"])
 
     return (
         base
@@ -160,7 +176,9 @@ def per_minute_health_metrics(
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+        "activity": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
+        ),
     },
     automation_condition=AutomationCondition.eager(),
     description="Daily distribution of binned heart rates (5 bpm bins, 40-160 range)",

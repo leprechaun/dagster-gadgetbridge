@@ -16,13 +16,26 @@ from gadgetbridge_pipeline.defs.poi.bronze import (
 # parse_poi_feature — single GeoJSON feature -> POI row or None
 
 def _point(name="home", kind="poi", radius_m=None, **extra):
-    props = {"name": name, "kind": kind, **({"radius_m": radius_m} if radius_m is not None else {}), **extra}
-    return {"type": "Feature", "properties": props, "geometry": {"type": "Point", "coordinates": [2.3522, 48.8566]}}
+    props = {
+        "name": name,
+        "kind": kind,
+        **({"radius_m": radius_m} if radius_m is not None else {}),
+        **extra,
+    }
+    return {
+        "type": "Feature",
+        "properties": props,
+        "geometry": {"type": "Point", "coordinates": [2.3522, 48.8566]},
+    }
 
 
 def _rectangle(name="bangkok", kind="region", ring=None):
     ring = ring or [[100.4, 13.6], [100.4, 14.0], [100.8, 14.0], [100.8, 13.6], [100.4, 13.6]]
-    return {"type": "Feature", "properties": {"name": name, "kind": kind}, "geometry": {"type": "Polygon", "coordinates": [ring]}}
+    return {
+        "type": "Feature",
+        "properties": {"name": name, "kind": kind},
+        "geometry": {"type": "Polygon", "coordinates": [ring]},
+    }
 
 
 def test_parse_point_basic():
@@ -68,7 +81,13 @@ def test_parse_rectangle_basic():
 
 def test_parse_rectangle_rejects_non_axis_aligned_trapezoid():
     # 4 distinct longitudes instead of 2 — a slanted quadrilateral, not a box
-    ring = [[-74.228316, 45.918737], [-74.227356, 45.909039], [-74.208851, 45.909039], [-74.208546, 45.918737], [-74.228316, 45.918737]]
+    ring = [
+        [-74.228316, 45.918737],
+        [-74.227356, 45.909039],
+        [-74.208851, 45.909039],
+        [-74.208546, 45.918737],
+        [-74.228316, 45.918737],
+    ]
     assert parse_poi_feature(_rectangle(ring=ring)) is None
 
 
@@ -86,12 +105,20 @@ def test_parse_rectangle_rejects_duplicate_corner():
 def test_parse_polygon_with_holes_is_rejected():
     outer = [[100.4, 13.6], [100.4, 14.0], [100.8, 14.0], [100.8, 13.6], [100.4, 13.6]]
     hole = [[100.5, 13.7], [100.5, 13.8], [100.6, 13.8], [100.6, 13.7], [100.5, 13.7]]
-    feature = {"type": "Feature", "properties": {"name": "with-hole", "kind": "region"}, "geometry": {"type": "Polygon", "coordinates": [outer, hole]}}
+    feature = {
+        "type": "Feature",
+        "properties": {"name": "with-hole", "kind": "region"},
+        "geometry": {"type": "Polygon", "coordinates": [outer, hole]},
+    }
     assert parse_poi_feature(feature) is None
 
 
 def test_parse_feature_rejects_unsupported_geometry_type():
-    feature = {"type": "Feature", "properties": {"name": "x", "kind": "poi"}, "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]}}
+    feature = {
+        "type": "Feature",
+        "properties": {"name": "x", "kind": "poi"},
+        "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
+    }
     assert parse_poi_feature(feature) is None
 
 
@@ -117,7 +144,14 @@ def test_parse_geojson_empty_feature_collection():
 # find_same_kind_overlaps — pure geometry logic
 
 def _rect_row(name, kind, lon_min, lon_max, lat_min, lat_max):
-    return {"name": name, "kind": kind, "lon_min": lon_min, "lon_max": lon_max, "lat_min": lat_min, "lat_max": lat_max}
+    return {
+        "name": name,
+        "kind": kind,
+        "lon_min": lon_min,
+        "lon_max": lon_max,
+        "lat_min": lat_min,
+        "lat_max": lat_max,
+    }
 
 
 def test_find_overlaps_same_kind_overlapping():
@@ -246,18 +280,30 @@ def test_rectangle_bounds_valid_ignores_circle_rows():
 
 # poi_no_same_kind_overlap (asset-check wrapper)
 
+def _rect_row(name, kind, lon_min, lon_max, lat_min, lat_max):
+    return {
+        "name": name,
+        "kind": kind,
+        "geometry_type": "rectangle",
+        "lon_min": lon_min,
+        "lon_max": lon_max,
+        "lat_min": lat_min,
+        "lat_max": lat_max,
+    }
+
+
 def test_no_same_kind_overlap_passes_when_clean():
     df = pl.DataFrame([
-        {"name": "a", "kind": "region", "geometry_type": "rectangle", "lon_min": 0.0, "lon_max": 10.0, "lat_min": 0.0, "lat_max": 10.0},
-        {"name": "b", "kind": "area", "geometry_type": "rectangle", "lon_min": 4.0, "lon_max": 6.0, "lat_min": 4.0, "lat_max": 6.0},
+        _rect_row("a", "region", 0.0, 10.0, 0.0, 10.0),
+        _rect_row("b", "area", 4.0, 6.0, 4.0, 6.0),
     ])
     assert poi_no_same_kind_overlap(df).passed
 
 
 def test_no_same_kind_overlap_fails_on_same_kind_overlap():
     df = pl.DataFrame([
-        {"name": "a", "kind": "region", "geometry_type": "rectangle", "lon_min": 0.0, "lon_max": 10.0, "lat_min": 0.0, "lat_max": 10.0},
-        {"name": "b", "kind": "region", "geometry_type": "rectangle", "lon_min": 5.0, "lon_max": 15.0, "lat_min": 5.0, "lat_max": 15.0},
+        _rect_row("a", "region", 0.0, 10.0, 0.0, 10.0),
+        _rect_row("b", "region", 5.0, 15.0, 5.0, 15.0),
     ])
     result = poi_no_same_kind_overlap(df)
     assert not result.passed

@@ -120,11 +120,16 @@ def join_location_poi(location_records: pl.DataFrame, poi: pl.DataFrame) -> pl.D
     partitions_def=owntracks_partitions,
     metadata={"partition_expr": "year_month"},
     ins={
-        "location_records": dg.AssetIn(key=dg.AssetKey(["owntracks", "bronze", "location_records"])),
+        "location_records": dg.AssetIn(
+            key=dg.AssetKey(["owntracks", "bronze", "location_records"])
+        ),
         "poi": dg.AssetIn(key=dg.AssetKey(["poi", "bronze", "points_of_interest"])),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Location records annotated with the POI (circle or rectangle) each falls within, one column per kind.",
+    description=(
+        "Location records annotated with the POI (circle or rectangle) "
+        "each falls within, one column per kind."
+    ),
 )
 def location_records_with_poi(
     location_records: pl.DataFrame, poi: pl.DataFrame

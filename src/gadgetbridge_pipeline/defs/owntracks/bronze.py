@@ -135,7 +135,10 @@ def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
     key_prefix=["owntracks", "bronze"],
     metadata={"partition_expr": "year_month"},
     op_tags={"dagster/concurrency_key": "owntracks_deltalake"},
-    description="Parsed OwnTracks location records, written to Delta Lake via partition_expr on year_month.",
+    description=(
+        "Parsed OwnTracks location records, written to Delta Lake "
+        "via partition_expr on year_month."
+    ),
 )
 def location_records(context: AssetExecutionContext, s3: S3ClientResource) -> pl.DataFrame:
     # partition_key is "2026-07-01"; filenames use "2026-07"
@@ -169,7 +172,10 @@ def location_records(context: AssetExecutionContext, s3: S3ClientResource) -> pl
                     context.log.warning(f"{key}: dropped record with unparseable arrived_at: {raw}")
             context.log.info(f"{key}: {len(records)} location records, {len(dropped)} dropped")
 
-    context.log.info(f"Total: {len(all_records)} records, {len(all_dropped)} dropped, from {len(files_read)} file(s)")
+    context.log.info(
+        f"Total: {len(all_records)} records, {len(all_dropped)} dropped, "
+        f"from {len(files_read)} file(s)"
+    )
 
     context.add_output_metadata({
         "records": len(all_records),

@@ -13,7 +13,9 @@ def _is_weekend(date_col: str) -> pl.Expr:
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
+        "activity": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
+        ),
     },
     automation_condition=AutomationCondition.eager(),
 )
@@ -38,11 +40,15 @@ def steps_per_day(activity):
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "activity_sample": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
-        "hrv":             dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_hrv_value_sample"])),
-        "spo2":            dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_spo2_sample"])),
-        "stress":          dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
-        "temperature":     dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_temperature_sample"])),
+        "activity_sample": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
+        ),
+        "hrv": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "generic_hrv_value_sample"])),
+        "spo2": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_spo2_sample"])),
+        "stress": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
+        "temperature": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "generic_temperature_sample"])
+        ),
     },
     automation_condition=AutomationCondition.eager(),
 )
@@ -93,8 +99,10 @@ def daily_health_snapshot(
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "activity": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])),
-        "stress":   dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
+        "activity": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
+        ),
+        "stress": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
     },
     automation_condition=AutomationCondition.eager(),
     description="Daily step totals joined with average stress score, for correlation analysis",
@@ -130,11 +138,16 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "daily_heart_rate_distribution": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "daily_heart_rate_distribution"])),
+        "daily_heart_rate_distribution": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "silver", "daily_heart_rate_distribution"])
+        ),
         "medicine_log": dg.AssetIn(key=dg.AssetKey(["medicine", "bronze", "medicine_log"])),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Heart rate distribution normalized within each (medication_state x weekday/weekend) group",
+    description=(
+        "Heart rate distribution normalized within each "
+        "(medication_state x weekday/weekend) group"
+    ),
 )
 def heart_rate_distribution_by_medication_and_weekday(
     daily_heart_rate_distribution: pl.DataFrame,
@@ -157,8 +170,10 @@ def heart_rate_distribution_by_medication_and_weekday(
         .group_by(["heart_rate", "medication_state", "is_weekend"])
         .agg(pl.col("sample_count").sum())
         .with_columns(
-            (pl.col("sample_count") / pl.col("sample_count").sum().over(["medication_state", "is_weekend"]))
-            .alias("proportion")
+            (
+                pl.col("sample_count")
+                / pl.col("sample_count").sum().over(["medication_state", "is_weekend"])
+            ).alias("proportion")
         )
         .sort(["medication_state", "is_weekend", "heart_rate"])
     )
@@ -167,10 +182,15 @@ def heart_rate_distribution_by_medication_and_weekday(
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
-        "sleep_periods": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])),
+        "sleep_periods": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])
+        ),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Nightly sleep start/end times normalized onto a common date for weekday vs weekend overlay charting",
+    description=(
+        "Nightly sleep start/end times normalized onto a common date "
+        "for weekday vs weekend overlay charting"
+    ),
 )
 def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     TZ = "Asia/Bangkok"
@@ -193,8 +213,12 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
             pl.lit(COMMON_DATE).dt.combine(pl.col("end").dt.time()).alias("end"),
         )
         .with_columns(
-            pl.when(pl.col("start").dt.time() > CUTOFF).then(pl.col("start") - ONE_DAY).otherwise(pl.col("start")),
-            pl.when(pl.col("end").dt.time() > CUTOFF).then(pl.col("end") - ONE_DAY).otherwise(pl.col("end")),
+            pl.when(pl.col("start").dt.time() > CUTOFF)
+            .then(pl.col("start") - ONE_DAY)
+            .otherwise(pl.col("start")),
+            pl.when(pl.col("end").dt.time() > CUTOFF)
+            .then(pl.col("end") - ONE_DAY)
+            .otherwise(pl.col("end")),
             pl.col("reporting_date").dt.strftime("%Y-%m-%d"),
         )
     )

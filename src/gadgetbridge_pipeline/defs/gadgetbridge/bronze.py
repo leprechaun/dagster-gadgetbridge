@@ -32,7 +32,10 @@ TYPE_DS_UTC_US = pl.Datetime(time_unit='us', time_zone='UTC')
 _TABLES = {
     "huami_extended_activity_sample": {
         "epoch_unit": "s",
-        "description": "a wide table of per minute metrics including step count, sleep, vigor of movement, etc",
+        "description": (
+            "a wide table of per minute metrics including step count, sleep, "
+            "vigor of movement, etc"
+        ),
         "schema": pl.Schema({
             'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
@@ -131,7 +134,10 @@ _TABLES = {
     },
     "huami_sleep_session_sample": {
         "epoch_unit": "ms",
-        "description": "sleep session with binary data. there can be overlapping sessions during the same day.",
+        "description": (
+            "sleep session with binary data. there can be overlapping sessions "
+            "during the same day."
+        ),
         "schema": pl.Schema({
             'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,
@@ -181,7 +187,9 @@ def _make_asset_check(table_name: str, settings: dict[str, Any]):
             for column, expected_type in expected_schema.items():
                 actual_type = actual_schema.get(column)
                 if actual_type != expected_type:
-                    differences.append(f"Column '{column}': expected {expected_type}, got {actual_type}")
+                    differences.append(
+                        f"Column '{column}': expected {expected_type}, got {actual_type}"
+                    )
 
             for column in actual_schema:
                 if column not in expected_schema:

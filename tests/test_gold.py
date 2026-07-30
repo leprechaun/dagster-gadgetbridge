@@ -33,13 +33,23 @@ def test_daily_health_snapshot_joins_and_averages():
     def ts(d):
         return dt.fromisoformat(d)
 
-    activity_sample = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")], "HEART_RATE": [40.0, 60.0]})
-    hrv = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")], "VALUE": [40.0, 60.0]})
+    activity_sample = pl.DataFrame({
+        "TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")], "HEART_RATE": [40.0, 60.0],
+    })
+    hrv = pl.DataFrame({
+        "TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")], "VALUE": [40.0, 60.0],
+    })
     spo2 = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 09:00")], "SPO2": [97.0]})
     stress = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 10:00")], "STRESS": [30.0]})
     temperature = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 11:00")], "TEMPERATURE": [36.6]})
 
-    result = daily_health_snapshot(hrv=hrv, spo2=spo2, stress=stress, temperature=temperature, activity_sample=activity_sample)
+    result = daily_health_snapshot(
+        hrv=hrv,
+        spo2=spo2,
+        stress=stress,
+        temperature=temperature,
+        activity_sample=activity_sample,
+    )
 
     assert result.shape[0] == 1
     assert result["avg_hrv"][0] == 50.0
@@ -207,7 +217,8 @@ def _bkk(s):
 
 
 def _sleep_periods(*rows):
-    # each row: (reporting_date, start, end) — start/end as "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
+    # each row: (reporting_date, start, end) — start/end as
+    # "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
     return pl.DataFrame({
         "date":           [r[0] for r in rows],
         "reporting_date": [r[0] for r in rows],

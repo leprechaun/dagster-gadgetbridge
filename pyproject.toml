@@ -56,3 +56,17 @@ registry_modules = [
 
 [tool.ruff]
 exclude = ["*.nb.py"]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes (ruff's previous default)
+    "I",    # isort — import sorting/grouping
+    "UP",   # pyupgrade — modern Python syntax
+    "B",    # flake8-bugbear — common bug-prone patterns
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific rules
+]

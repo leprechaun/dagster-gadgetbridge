@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from gadgetbridge_pipeline.defs.owntracks.bronze import parse_rec_lines
 
 
-def _line(tst: int, lat: float, lon: float, arrived_at: str = "2026-07-01T00:00:00Z", **extra) -> str:
+def _line(
+    tst: int, lat: float, lon: float, arrived_at: str = "2026-07-01T00:00:00Z", **extra
+) -> str:
     payload = {"_type": "location", "tst": tst, "lat": lat, "lon": lon, **extra}
     return f"{arrived_at}\t*\t{json.dumps(payload)}"
 
@@ -99,7 +101,8 @@ def test_parse_multiple_records():
 
 def test_parse_drops_corrupted_arrived_at():
     # arrived_at is all null bytes — unrecoverable after stripping
-    bad_line = f"\x00\x00\x00\t*\t{json.dumps({'_type': 'location', 'tst': 1, 'lat': 1.0, 'lon': 2.0})}"
+    payload = {"_type": "location", "tst": 1, "lat": 1.0, "lon": 2.0}
+    bad_line = f"\x00\x00\x00\t*\t{json.dumps(payload)}"
     lines = [bad_line, _line(2000, 3.0, 4.0)]
     records, dropped = parse_rec_lines(lines, user="alice", device="phone")
     assert len(records) == 1

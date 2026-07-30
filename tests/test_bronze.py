@@ -184,7 +184,8 @@ def test_respiratory_rate_checks_fails_above_max():
     assert not result.passed
 
 
-# generic per-table timestamp check — TIMESTAMP should never be null, and should always be after 2026-01-01
+# generic per-table timestamp check — TIMESTAMP should never be null,
+# and should always be after 2026-01-01
 
 def _ts_df(values):
     return pl.DataFrame({"TIMESTAMP": values})

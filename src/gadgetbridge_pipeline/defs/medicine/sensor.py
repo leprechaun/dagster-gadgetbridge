@@ -19,7 +19,10 @@ _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 
 medicine_s3_sensor = make_object_watch_sensor(
     name="medicine_s3_sensor",
-    description="Triggers medicine_log materialization when prescriptions.csv or medicine_skips.csv changes on S3.",
+    description=(
+        "Triggers medicine_log materialization when prescriptions.csv "
+        "or medicine_skips.csv changes on S3."
+    ),
     keys={
         "prescriptions": (_MEDICINE_BUCKET, "medicine/raw/prescriptions.csv"),
         "skips": (_MEDICINE_BUCKET, "medicine/raw/medicine_skips.csv"),
