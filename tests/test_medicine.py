@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from gadgetbridge_pipeline.defs.assets.gadgetbridge.medicine import (
+from gadgetbridge_pipeline.defs.assets.medicine.bronze import (
     _today,
     build_medicine_log,
     medicine_log_dosage_positive,

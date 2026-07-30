@@ -35,9 +35,8 @@ Each bronze asset reads a table from the SQLite file, converts the epoch timesta
 | `huami_pai_sample` | Amazfit's PAI health metric (low/moderate/high activity breakdown) |
 | `battery_level` | Device battery level |
 | `huami_sleep_session_sample` | Raw sleep session binary blobs |
-| `medicine_log` | Daily medication adherence log derived from `prescriptions.csv` and `medicine_skips.csv` on S3 |
 
-Asset checks that block promotion on failure: heart rate in range, battery 0–100, SpO2 70–100, temperature 15–42 °C, stress 1–100, HRV positive and ≤ 300, respiratory rate 4–60 bpm, medicine dosages positive, no orphaned skip records.
+Asset checks that block promotion on failure: heart rate in range, battery 0–100, SpO2 70–100, temperature 15–42 °C, stress 1–100, HRV positive and ≤ 300, respiratory rate 4–60 bpm.
 
 ### Silver
 
@@ -58,6 +57,18 @@ Blocking asset check on `daily_sleep_duration`, defined as a [pandera](https://p
 | `steps_per_day` | Daily step totals with weekday/weekend flag |
 | `steps_vs_stress` | Daily step totals joined with average and median stress, for correlation analysis |
 | `heart_rate_distribution_by_medication_and_weekday` | Heart rate distribution grouped by active medication state and weekday vs. weekend |
+
+## Medicine
+
+A separate domain, independent of the medallion layers above — its inputs are two hand-maintained CSVs on S3 (`prescriptions.csv`, `medicine_skips.csv`), not the Gadgetbridge SQLite export. `gadgetbridge`'s `heart_rate_distribution_by_medication_and_weekday` (above) consumes its output across domains, the same way `owntracks` consumes `poi`.
+
+| Asset | Description |
+|---|---|
+| `prescriptions` | Prescriptions CSV mirrored from S3, versioned in Delta Lake |
+| `medicine_skips` | Medicine skip records mirrored from S3, versioned in Delta Lake |
+| `medicine_log` | Daily medication adherence log derived from `prescriptions` and `medicine_skips` |
+
+Blocking asset checks: medicine dosages positive, no orphaned skip records (a skip date outside every prescription's date range), no skip dates in the future.
 
 ## Tests
 

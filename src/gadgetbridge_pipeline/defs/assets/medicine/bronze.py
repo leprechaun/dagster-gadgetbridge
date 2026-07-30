@@ -11,8 +11,8 @@ from dagster import AssetCheckResult, AssetIn, AssetKey, AutomationCondition, De
 from gadgetbridge_pipeline.defs.resources import S3ClientResource
 
 _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
-_PRESCRIPTIONS_KEY = "gadgetbridge/raw/prescriptions.csv"
-_SKIPS_KEY = "gadgetbridge/raw/medicine_skips.csv"
+_PRESCRIPTIONS_KEY = "medicine/raw/prescriptions.csv"
+_SKIPS_KEY = "medicine/raw/medicine_skips.csv"
 _TZ = ZoneInfo("Asia/Bangkok")
 
 
@@ -75,7 +75,7 @@ def _read_s3_csv(s3: S3ClientResource, key: str, **read_csv_kwargs) -> pl.DataFr
 
 @dg.asset(
     name="prescriptions",
-    io_manager_key="deltalake_io_manager",
+    io_manager_key="medicine_deltalake_io_manager",
     description="Prescriptions CSV mirrored from S3, versioned in Delta Lake.",
 )
 def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
@@ -84,7 +84,7 @@ def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
 
 @dg.asset(
     name="medicine_skips",
-    io_manager_key="deltalake_io_manager",
+    io_manager_key="medicine_deltalake_io_manager",
     description="Medicine skip records mirrored from S3, versioned in Delta Lake.",
 )
 def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
@@ -92,7 +92,7 @@ def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
 
 
 @dg.asset(
-    io_manager_key="deltalake_io_manager",
+    io_manager_key="medicine_deltalake_io_manager",
     description="Daily medication adherence log derived from prescriptions and skip records",
     automation_condition=AutomationCondition.eager(),
 )
@@ -103,7 +103,7 @@ def medicine_log(context, prescriptions: pl.DataFrame, medicine_skips: pl.DataFr
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"]),
+    asset=dg.AssetKey(["medicine", "bronze", "medicine_log"]),
     blocking=True,
     name="medicine_log_dosage_positive",
 )
@@ -124,11 +124,11 @@ def medicine_log_dosage_positive(medicine_log: pl.DataFrame) -> AssetCheckResult
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "prescriptions"]),
+    asset=dg.AssetKey(["medicine", "bronze", "prescriptions"]),
     blocking=True,
     name="medicine_skips_within_prescriptions",
     additional_ins={
-        "medicine_skips": AssetIn(key=AssetKey(["gadgetbridge", "bronze", "medicine_skips"])),
+        "medicine_skips": AssetIn(key=AssetKey(["medicine", "bronze", "medicine_skips"])),
     },
 )
 def medicine_skips_within_prescriptions(
@@ -150,7 +150,7 @@ def medicine_skips_within_prescriptions(
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["gadgetbridge", "bronze", "medicine_skips"]),
+    asset=dg.AssetKey(["medicine", "bronze", "medicine_skips"]),
     blocking=True,
     name="medicine_skips_not_in_future",
 )
@@ -166,8 +166,8 @@ def medicine_skips_not_in_future(medicine_skips: pl.DataFrame) -> AssetCheckResu
 
 defs = Definitions(
     assets=dg.load_assets_from_current_module(
-        group_name="gadgetbridge",
-        key_prefix=["gadgetbridge", "bronze"]
+        group_name="medicine",
+        key_prefix=["medicine", "bronze"]
     ),
     asset_checks=[
         medicine_log_dosage_positive,

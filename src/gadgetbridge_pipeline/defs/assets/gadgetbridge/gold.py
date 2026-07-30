@@ -130,7 +130,7 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
     io_manager_key="deltalake_io_manager",
     ins={
         "daily_heart_rate_distribution": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "silver", "daily_heart_rate_distribution"])),
-        "medicine_log": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "medicine_log"])),
+        "medicine_log": dg.AssetIn(key=dg.AssetKey(["medicine", "bronze", "medicine_log"])),
     },
     automation_condition=AutomationCondition.eager(),
     description="Heart rate distribution normalized within each (medication_state × weekday/weekend) group",

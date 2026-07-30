@@ -84,5 +84,9 @@ defs = Definitions(
             root_uri=f"s3://{_deltalake_bucket}/poi/",
             storage_options=_s3_config,
         ),
+        "medicine_deltalake_io_manager": DeltaLakePolarsIOManager(
+            root_uri=f"s3://{_deltalake_bucket}/medicine/",
+            storage_options=_s3_config,
+        ),
     }
 )

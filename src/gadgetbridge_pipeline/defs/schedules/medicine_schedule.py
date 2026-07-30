@@ -19,7 +19,7 @@ from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, Definitions
 
 medicine_log_job = dg.define_asset_job(
     name="medicine_log_daily_job",
-    selection=AssetSelection.assets(AssetKey(["gadgetbridge", "bronze", "medicine_log"])),
+    selection=AssetSelection.assets(AssetKey(["medicine", "bronze", "medicine_log"])),
 )
 
 medicine_log_daily_schedule = dg.ScheduleDefinition(

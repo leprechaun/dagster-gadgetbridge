@@ -21,5 +21,5 @@ def test_schedule_targets_the_medicine_log_job():
 
 def test_job_selects_only_medicine_log():
     assert medicine_log_job.selection == AssetSelection.assets(
-        AssetKey(["gadgetbridge", "bronze", "medicine_log"])
+        AssetKey(["medicine", "bronze", "medicine_log"])
     )

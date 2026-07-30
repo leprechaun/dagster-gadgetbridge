@@ -7,6 +7,6 @@ def test_medicine_s3_sensor_wiring():
     assert medicine_s3_sensor.name == "medicine_s3_sensor"
     assert medicine_s3_sensor.minimum_interval_seconds == 300
     assert medicine_s3_sensor.asset_selection == AssetSelection.assets(
-        AssetKey(["gadgetbridge", "bronze", "prescriptions"]),
-        AssetKey(["gadgetbridge", "bronze", "medicine_skips"]),
+        AssetKey(["medicine", "bronze", "prescriptions"]),
+        AssetKey(["medicine", "bronze", "medicine_skips"]),
     )
