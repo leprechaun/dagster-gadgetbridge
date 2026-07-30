@@ -1,6 +1,6 @@
 from dagster import AssetKey, AssetSelection, DefaultScheduleStatus
 
-from gadgetbridge_pipeline.defs.schedules.medicine_schedule import (
+from gadgetbridge_pipeline.defs.medicine.schedule import (
     medicine_log_daily_schedule,
     medicine_log_job,
 )

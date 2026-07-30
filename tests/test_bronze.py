@@ -1,7 +1,7 @@
 import pytest
 import polars as pl
 from datetime import datetime, timezone
-from gadgetbridge_pipeline.defs.assets.gadgetbridge.bronze import (
+from gadgetbridge_pipeline.defs.gadgetbridge.bronze import (
     apply_bronze_transform,
     activity_heartrate_checks,
     battery_level_checks,

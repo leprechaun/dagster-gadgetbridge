@@ -1,7 +1,7 @@
 import datetime
 import pytest
 import polars as pl
-from gadgetbridge_pipeline.defs.assets.gadgetbridge.silver import per_minute_health_metrics, sleep_periods_based_on_activity, daily_sleep_duration, daily_sleep_duration_checks
+from gadgetbridge_pipeline.defs.gadgetbridge.silver import per_minute_health_metrics, sleep_periods_based_on_activity, daily_sleep_duration, daily_sleep_duration_checks
 
 EXPECTED_COLUMNS = {
     "MINUTE", "DEVICE_ID", "USER_ID",

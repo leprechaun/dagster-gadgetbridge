@@ -13,7 +13,7 @@ import os
 
 from dagster import AssetKey, AssetSelection, Definitions
 
-from gadgetbridge_pipeline.defs.sensors.s3_watch import make_object_watch_sensor
+from gadgetbridge_pipeline.defs.s3_watch import make_object_watch_sensor
 
 _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 

@@ -1,6 +1,6 @@
 import polars as pl
 
-from gadgetbridge_pipeline.defs.assets.owntracks.silver import join_location_poi
+from gadgetbridge_pipeline.defs.owntracks.silver import join_location_poi
 
 # Eiffel Tower, for a real-world lat/lon pair with a known nearby distance.
 _EIFFEL_LAT, _EIFFEL_LON = 48.8584, 2.2945

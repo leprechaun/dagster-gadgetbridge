@@ -14,7 +14,7 @@ import os
 
 from dagster import AssetKey, AssetSelection, Definitions
 
-from gadgetbridge_pipeline.defs.sensors.s3_watch import make_prefix_watch_sensor
+from gadgetbridge_pipeline.defs.s3_watch import make_prefix_watch_sensor
 
 _BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PREFIX = "owntracks/raw/rec/"

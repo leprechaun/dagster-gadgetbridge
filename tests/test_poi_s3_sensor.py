@@ -1,6 +1,6 @@
 from dagster import AssetKey, AssetSelection
 
-from gadgetbridge_pipeline.defs.sensors.poi_s3_sensor import poi_s3_sensor
+from gadgetbridge_pipeline.defs.poi.sensor import poi_s3_sensor
 
 
 def test_poi_s3_sensor_wiring():

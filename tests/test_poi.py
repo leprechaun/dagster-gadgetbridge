@@ -2,7 +2,7 @@ import json
 
 import polars as pl
 
-from gadgetbridge_pipeline.defs.assets.poi.bronze import (
+from gadgetbridge_pipeline.defs.poi.bronze import (
     find_same_kind_overlaps,
     parse_poi_feature,
     parse_poi_geojson,

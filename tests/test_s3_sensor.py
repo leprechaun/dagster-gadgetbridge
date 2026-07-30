@@ -1,6 +1,6 @@
 from dagster import AssetSelection
 
-from gadgetbridge_pipeline.defs.sensors.s3_sensor import s3_sensor
+from gadgetbridge_pipeline.defs.gadgetbridge.sensor import s3_sensor
 
 
 def test_s3_sensor_wiring():

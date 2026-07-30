@@ -1,6 +1,6 @@
 from dagster import AssetKey, AssetSelection
 
-from gadgetbridge_pipeline.defs.sensors.owntracks_s3_sensor import (
+from gadgetbridge_pipeline.defs.owntracks.sensor import (
     _month_from_key,
     _partition_key,
     owntracks_s3_sensor,

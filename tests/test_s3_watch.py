@@ -1,4 +1,4 @@
-from gadgetbridge_pipeline.defs.sensors.s3_watch import (
+from gadgetbridge_pipeline.defs.s3_watch import (
     evaluate_object_change,
     parse_json_cursor,
     plan_prefix_run_requests,

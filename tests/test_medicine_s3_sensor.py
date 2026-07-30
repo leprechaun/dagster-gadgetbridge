@@ -1,6 +1,6 @@
 from dagster import AssetKey, AssetSelection
 
-from gadgetbridge_pipeline.defs.sensors.medicine_s3_sensor import medicine_s3_sensor
+from gadgetbridge_pipeline.defs.medicine.sensor import medicine_s3_sensor
 
 
 def test_medicine_s3_sensor_wiring():
