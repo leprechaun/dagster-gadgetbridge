@@ -19,6 +19,3 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . /deploy_k8s/
 RUN uv sync --frozen --no-dev
-
-# Expose the port that your Dagster instance will run on
-EXPOSE 80
