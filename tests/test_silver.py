@@ -8,6 +8,7 @@ from gadgetbridge_pipeline.defs.gadgetbridge.silver import (
     daily_sleep_duration_checks,
     per_minute_health_metrics,
     sleep_periods_based_on_activity,
+    sleep_sessions,
 )
 
 EXPECTED_COLUMNS = {
@@ -296,6 +297,95 @@ def test_no_sleep_activity_returns_empty():
     )
     result = sleep_periods_based_on_activity(activity)
     assert result.shape[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# sleep_sessions
+# ---------------------------------------------------------------------------
+
+def _u32(v):
+    return v.to_bytes(4, byteorder="little", signed=False)
+
+
+def _u16(v):
+    return v.to_bytes(2, byteorder="little", signed=False)
+
+
+def _u8(v):
+    return v.to_bytes(1, byteorder="little", signed=False)
+
+
+def _sleep_session_bytes(midnight=0, start=0, end=0, score=0):
+    # Same offsets as SleepSession: 0x04 midnight, 0x0a start, 0x0c end, 0x16 score.
+    buf = bytearray(0x56)
+    buf[0x04:0x08] = _u32(midnight)
+    buf[0x0a:0x0c] = _u16(start)
+    buf[0x0c:0x0e] = _u16(end)
+    buf[0x16:0x17] = _u8(score)
+    return bytes(buf)
+
+
+def _sleep_bronze(*rows):
+    # each row: (timestamp, midnight_epoch, start_min, end_min, score)
+    return pl.DataFrame({
+        "TIMESTAMP": [r[0] for r in rows],
+        "DEVICE_ID": [1] * len(rows),
+        "USER_ID":   [1] * len(rows),
+        "DATA":      [_sleep_session_bytes(r[1], r[2], r[3], r[4]) for r in rows],
+    })
+
+
+def test_sleep_sessions_no_column_is_a_duration_type():
+    # Delta Lake has no duration/interval type — regression guard, same rationale
+    # as test_daily_sleep_duration_total_sleep_minutes_is_a_plain_numeric_type
+    # (commit 253eaa6). sleep_sessions previously produced a pl.Duration
+    # "length" column via a misplaced .alias() inside pl.duration(minutes=...).
+    sleep = _sleep_bronze(
+        (_ts_utc("2024-01-15 00:00:00"), 1_700_000_000, 30, 480, 80),
+    )
+    result = sleep_sessions(sleep)
+    duration_columns = [name for name, dtype in result.schema.items() if dtype == pl.Duration]
+    assert duration_columns == []
+
+
+def test_sleep_sessions_length_minutes_is_end_minus_start():
+    sleep = _sleep_bronze(
+        (_ts_utc("2024-01-15 00:00:00"), 1_700_000_000, 30, 480, 80),
+    )
+    result = sleep_sessions(sleep)
+    assert result["length_minutes"][0] == 450
+    assert result["length_minutes"].dtype in (pl.Int64, pl.Int32)
+
+
+def test_sleep_sessions_sstart_send_are_relative_to_previous_midnight():
+    midnight = 1_700_000_000
+    sleep = _sleep_bronze(
+        (_ts_utc("2024-01-15 00:00:00"), midnight, 30, 480, 80),
+    )
+    result = sleep_sessions(sleep)
+
+    expected_midnight_yday = datetime.datetime.fromtimestamp(
+        midnight - 24 * 3600, tz=datetime.timezone.utc
+    )
+    assert result["sstart"][0].astimezone(datetime.timezone.utc) == (
+        expected_midnight_yday + datetime.timedelta(minutes=30)
+    )
+    assert result["send"][0].astimezone(datetime.timezone.utc) == (
+        expected_midnight_yday + datetime.timedelta(minutes=480)
+    )
+
+
+def test_sleep_sessions_index_and_rec_track_input_rows():
+    sleep = _sleep_bronze(
+        (_ts_utc("2024-01-14 00:00:00"), 1_700_000_000, 0, 60, 50),
+        (_ts_utc("2024-01-15 00:00:00"), 1_700_086_400, 0, 90, 60),
+    )
+    result = sleep_sessions(sleep)
+    assert result["index"].to_list() == [0, 1]
+    assert result["rec"].to_list() == [
+        _ts_utc("2024-01-14 00:00:00"),
+        _ts_utc("2024-01-15 00:00:00"),
+    ]
 
 
 # ---------------------------------------------------------------------------

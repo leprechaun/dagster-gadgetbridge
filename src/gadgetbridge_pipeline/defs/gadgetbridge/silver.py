@@ -214,7 +214,7 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
         ),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Daily distribution of binned heart rates (5 bpm bins, 40-160 range)",
+    description="Sleep session information (start, length, periods, score, etc)",
 )
 def sleep_sessions(sleep: pl.DataFrame):
     defaultdict(list)
