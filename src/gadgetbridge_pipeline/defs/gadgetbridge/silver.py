@@ -251,7 +251,7 @@ def sleep_sessions(sleep: pl.DataFrame):
         (pl.col("midnight_yday") + pl.duration(minutes=pl.col("start"))).alias("sstart"),
         (pl.col("midnight_yday") + pl.duration(minutes=pl.col("end"))).alias("send")
     ).drop(['midnight_yday', 'midnight']).with_columns(
-        pl.duration(minutes=(pl.col("end") - pl.col("start")).alias("length"))
+        (pl.col("end") - pl.col("start")).alias("length_minutes")
     )
 
     return sessions_df
