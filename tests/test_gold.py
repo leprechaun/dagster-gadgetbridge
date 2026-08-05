@@ -8,6 +8,8 @@ from gadgetbridge_pipeline.defs.gadgetbridge.gold import (
     daily_health_snapshot,
     daily_sleep_schedule,
     heart_rate_distribution_by_medication_and_weekday,
+    sleep_score_stats,
+    sleep_score_stats_checks,
     steps_per_day,
     steps_vs_stress,
 )
@@ -272,3 +274,123 @@ def test_is_weekend_flag_true_on_weekdays_false_on_weekends():
     )
     result = daily_sleep_schedule(periods).sort("reporting_date")
     assert result["is_weekend"].to_list() == [False, True]
+
+
+# ---------------------------------------------------------------------------
+# sleep_score_stats
+# ---------------------------------------------------------------------------
+
+def _sleep_sessions(*rows):
+    # each row: (rec_timestamp_str, score)
+    return pl.DataFrame({
+        "rec":   [dt.fromisoformat(r[0]) for r in rows],
+        "score": [r[1] for r in rows],
+    })
+
+
+def test_sleep_score_stats_mean_max_and_session_count():
+    sessions = _sleep_sessions(
+        ("2024-01-15 23:00:00", 80),
+        ("2024-01-15 23:30:00", 90),
+    )
+    result = sleep_score_stats(sessions)
+    assert result.shape[0] == 1
+    assert result["mean_score"][0] == 85.0
+    assert result["max_score"][0] == 90
+    assert result["session_count"][0] == 2
+
+
+def test_sleep_score_stats_groups_by_date_of_rec():
+    sessions = _sleep_sessions(
+        ("2024-01-15 08:00:00", 80),
+        ("2024-01-16 08:00:00", 60),
+    )
+    result = sleep_score_stats(sessions).sort("date")
+    assert result["date"].to_list() == [datetime.date(2024, 1, 15), datetime.date(2024, 1, 16)]
+    assert result["mean_score"].to_list() == [80.0, 60.0]
+
+
+def test_sleep_score_stats_is_weekend_flag():
+    sessions = _sleep_sessions(
+        ("2024-01-15 08:00:00", 80),  # Monday
+        ("2024-01-20 08:00:00", 80),  # Saturday
+    )
+    result = sleep_score_stats(sessions).sort("date")
+    assert result["is_weekend"].to_list() == [False, True]
+
+
+def test_sleep_score_stats_rolling_average_is_null_before_seven_days():
+    sessions = _sleep_sessions(
+        *[(f"2024-01-{d:02d} 08:00:00", 80) for d in range(1, 7)]
+    )
+    result = sleep_score_stats(sessions)
+    assert result["score_7d_ma"].null_count() == result.shape[0]
+
+
+def test_sleep_score_stats_rolling_average_after_seven_days():
+    sessions = _sleep_sessions(
+        *[(f"2024-01-{d:02d} 08:00:00", 70) for d in range(1, 9)]
+    )
+    result = sleep_score_stats(sessions).sort("date")
+    assert result["score_7d_ma"][-1] == 70.0
+
+
+# sleep_score_stats_checks — mean_score/max_score/score_7d_ma in [0, 100],
+# session_count > 0, mean_score <= max_score
+
+def _sleep_score_stats_df(*rows):
+    # each row: (date, mean_score, max_score, session_count, score_7d_ma)
+    return pl.DataFrame({
+        "date":           [r[0] for r in rows],
+        "mean_score":     [r[1] for r in rows],
+        "max_score":      [r[2] for r in rows],
+        "session_count":  [r[3] for r in rows],
+        "score_7d_ma":    pl.Series([r[4] for r in rows], dtype=pl.Float64),
+    })
+
+
+def test_sleep_score_stats_checks_passes():
+    df = _sleep_score_stats_df(
+        (datetime.date(2024, 1, 15), 80.0, 90, 2, 75.0),
+    )
+    result = sleep_score_stats_checks(df)
+    assert result.passed
+
+
+def test_sleep_score_stats_checks_passes_with_null_rolling_average():
+    # score_7d_ma is null for the first 6 days of data — that's expected, not a failure
+    df = _sleep_score_stats_df(
+        (datetime.date(2024, 1, 15), 80.0, 90, 2, None),
+    )
+    result = sleep_score_stats_checks(df)
+    assert result.passed
+
+
+def test_sleep_score_stats_checks_fails_on_score_out_of_range():
+    df = _sleep_score_stats_df(
+        (datetime.date(2024, 1, 15), 150.0, 90, 2, 75.0),
+    )
+    result = sleep_score_stats_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["column"] == "mean_score" for f in failures)
+
+
+def test_sleep_score_stats_checks_fails_on_zero_session_count():
+    df = _sleep_score_stats_df(
+        (datetime.date(2024, 1, 15), 80.0, 90, 0, 75.0),
+    )
+    result = sleep_score_stats_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["column"] == "session_count" for f in failures)
+
+
+def test_sleep_score_stats_checks_fails_when_mean_exceeds_max():
+    df = _sleep_score_stats_df(
+        (datetime.date(2024, 1, 15), 95.0, 90, 2, 75.0),
+    )
+    result = sleep_score_stats_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["check"] == "mean_score_le_max_score" for f in failures)

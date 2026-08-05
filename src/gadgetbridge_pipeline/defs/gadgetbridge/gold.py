@@ -1,8 +1,10 @@
 import datetime
 
 import dagster as dg
+import pandera.polars as pa
 import polars as pl
-from dagster import AutomationCondition, Definitions
+from dagster import AssetCheckResult, AutomationCondition, Definitions
+from pandera.typing.polars import Series
 
 
 def _is_weekend(date_col: str) -> pl.Expr:
@@ -224,9 +226,73 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+@dg.asset(
+    io_manager_key="deltalake_io_manager",
+    ins={
+        "sleep_sessions": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "silver", "sleep_sessions"])
+        ),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description=(
+        "Daily sleep score statistics (mean, max, session count), "
+        "with a 7-day rolling average"
+    ),
+)
+def sleep_score_stats(sleep_sessions: pl.DataFrame) -> pl.DataFrame:
+    return (
+        sleep_sessions
+        .with_columns(pl.col("rec").dt.date().alias("date"))
+        .group_by("date")
+        .agg(
+            pl.col("score").mean().round(1).alias("mean_score"),
+            pl.col("score").max().alias("max_score"),
+            pl.len().cast(pl.Int64).alias("session_count"),
+        )
+        .sort(by="date")
+        .with_columns(
+            _is_weekend("date").alias("is_weekend"),
+        )
+        .with_columns(
+            pl.col("mean_score").rolling_mean(window_size=7).round(1).alias("score_7d_ma"),
+        )
+    )
+
+
+class SleepScoreStatsSchema(pa.DataFrameModel):
+    date: Series[pl.Date]
+    # ASSUMPTION: score is a 0-100 percentage; unconfirmed against real device data
+    # (see sleep_sessions' SleepSessionsSchema, same assumption).
+    mean_score: Series[float] = pa.Field(ge=0, le=100)
+    max_score: Series[int] = pa.Field(ge=0, le=100)
+    session_count: Series[int] = pa.Field(gt=0)
+    score_7d_ma: Series[float] = pa.Field(ge=0, le=100, nullable=True)
+
+    @pa.dataframe_check
+    def mean_score_le_max_score(cls, data: pa.PolarsData) -> pl.LazyFrame:
+        return data.lazyframe.select(pl.col("mean_score") <= pl.col("max_score"))
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "gold", "sleep_score_stats"]),
+    blocking=True,
+    name="sleep_score_stats_range_checks",
+)
+def sleep_score_stats_checks(sleep_score_stats: pl.DataFrame) -> AssetCheckResult:
+    try:
+        SleepScoreStatsSchema.validate(sleep_score_stats, lazy=True)
+    except pa.errors.SchemaErrors as exc:
+        return AssetCheckResult(
+            passed=False,
+            metadata={"failure_cases": exc.failure_cases.to_dicts()},
+        )
+    return AssetCheckResult(passed=True)
+
+
 defs = Definitions(
     assets=dg.load_assets_from_current_module(
         group_name="gadgetbridge",
         key_prefix=["gadgetbridge", "gold"],
     ),
+    asset_checks=[sleep_score_stats_checks],
 )
