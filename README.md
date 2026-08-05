@@ -1,10 +1,12 @@
 # dagster-gadgetbridge
 
-A Dagster pipeline that ingests health data exported by the [Gadgetbridge](https://gadgetbridge.org/) Android app from an Amazfit/Huami wearable and transforms it into analytics-ready datasets stored in Delta Lake.
+A Dagster pipeline that ingests health data exported by the [Gadgetbridge](https://gadgetbridge.org/) Android app from an Amazfit/Huami wearable, [OwnTracks](https://owntracks.org/) location history, and a hand-curated points-of-interest file, transforming them into analytics-ready datasets stored in Delta Lake.
 
 ## How it works
 
 Gadgetbridge syncs wearable data into a SQLite database on the phone and periodically backs it up to S3. An S3 sensor polls for changes every five minutes and, when the file's ETag changes, triggers a full pipeline run. A second sensor watches two small CSVs on S3 that record prescription schedules and skipped doses, triggering rematerialization of the medication adherence assets whenever either file changes.
+
+Two more independent domains poll S3 the same way: an OwnTracks sensor lists `owntracks/raw/rec/` and triggers one run per calendar month whose `.rec` files changed (each run processes that month's partition), and a POI sensor triggers `points_of_interest` whenever the hand-curated `poi.geojson` changes.
 
 All assets use `AutomationCondition.eager()` so downstream layers update automatically the moment their upstream data is ready.
 
@@ -57,6 +59,26 @@ Blocking asset check on `daily_sleep_duration`, defined as a [pandera](https://p
 | `steps_per_day` | Daily step totals with weekday/weekend flag |
 | `steps_vs_stress` | Daily step totals joined with average and median stress, for correlation analysis |
 | `heart_rate_distribution_by_medication_and_weekday` | Heart rate distribution grouped by active medication state and weekday vs. weekend |
+| `daily_sleep_schedule` | Nightly sleep start/end times normalized onto a common date, split by weekday vs. weekend, for overlay charting |
+
+## OwnTracks
+
+A separate domain tracking device location history, independent of the medallion layers above. Raw `.rec` files (tab-separated timestamp + JSON, one per user/device/month) land in S3 under `owntracks/raw/rec/{user}/{device}/{year-month}.rec`; `location_records` is partitioned by month (`MonthlyPartitionsDefinition`, `partition_expr="year_month"`) and reads every user/device file for its partition.
+
+| Asset | Description |
+|---|---|
+| `location_records` (bronze) | Parsed `.rec` lines (location entries only) for one monthly partition, across all users/devices |
+| `location_records_with_poi` (silver) | Location records annotated with the POI(s) — circle or rectangle — each point falls within, one column per POI kind |
+
+## Points of interest (POI)
+
+Bronze-only domain, independent of the medallion layers above: a hand-curated GeoJSON file (`poi.geojson`) of named circles (`Point` + `radius_m`) and axis-aligned rectangles (`Polygon`), which `owntracks`'s silver layer joins location records against.
+
+| Asset | Description |
+|---|---|
+| `points_of_interest` | Named circles and rectangles parsed from `poi.geojson`, each with a `kind` tier (`point-of-interest`, `area`, `region`, `territory`); kinds can nest, so a location can match POIs of several different kinds at once |
+
+Blocking asset checks: POI names unique, `kind` present and valid, circle radius positive, rectangle bounds valid (min < max on both axes), no same-kind rectangle overlap (different kinds may nest freely).
 
 ## Medicine
 
@@ -80,10 +102,14 @@ Tests live in `tests/` and run without any external dependencies — no S3, no D
 | `test_silver.py` | Row count, minute truncation, left-join nulls for missing data, multi-sample aggregation within a minute, column set, sort order; sleep period detection, `daily_sleep_duration` aggregation across interrupted/multiple nights, and its range/invariant asset check |
 | `test_gold.py` | `daily_health_snapshot` cross-metric join and daily averaging |
 | `test_medicine.py` | Date-range expansion from prescriptions, null end-date handling, skip application, dosage calculation |
-| `test_s3_sensor.py` | Cursor parsing and skip-vs-run decision logic for the SQLite S3 sensor |
-| `test_medicine_s3_sensor.py` | Cursor parsing and skip-vs-run decision logic for the medicine CSV sensor |
-| `test_owntracks_s3_sensor.py` | Month/partition-key derivation and affected-month run planning for the OwnTracks sensor |
+| `test_s3_watch.py` | Cursor parsing and skip-vs-run decision logic shared by every sensor: ETag/HEAD-based change detection and LIST-based prefix diffing/grouping into run requests |
+| `test_s3_sensor.py` | Wiring for the SQLite S3 sensor: name, poll interval, asset selection |
+| `test_medicine_s3_sensor.py` | Wiring for the medicine CSV sensor: name, poll interval, asset selection |
+| `test_owntracks_s3_sensor.py` | Month/partition-key derivation for the OwnTracks sensor, plus sensor wiring |
 | `test_owntracks_bronze.py` | `.rec` line parsing: location filtering, malformed JSON/timestamps, optional fields |
+| `test_owntracks_silver.py` | Location-to-POI join: circle (haversine) and rectangle matching, multi-kind nesting, unmatched locations |
+| `test_poi.py` | GeoJSON feature parsing (circles/rectangles), rejection of malformed geometry, same-kind rectangle overlap detection |
+| `test_poi_s3_sensor.py` | Wiring for the POI GeoJSON sensor: name, poll interval, asset selection |
 | `test_medicine_schedule.py` | `medicine_log` daily schedule's cron, timezone, default status, and asset selection |
 
 Run tests locally:
@@ -104,7 +130,7 @@ open htmlcov/index.html
 
 Every push to `master` runs the following GitHub Actions pipeline:
 
-1. **Test** — `ruff check`, `dg check defs`, and `pytest`
+1. **Test** — `ruff check`, `dg check defs`, `pytest`, then exports coverage and uploads it to Qlty
 2. **Build and push** — builds a Docker image and pushes it to `ghcr.io/leprechaun/dagster-gadgetbridge` tagged `latest` and with the run number
 3. **Deploy** — opens a WireGuard tunnel to the private network, then runs `helm upgrade` against the Kubernetes cluster using the `dagster/dagster-user-deployments` chart
 
@@ -124,4 +150,4 @@ Environment variables required (see `.env.k8s` for the Kubernetes set):
 | Variable | Purpose |
 |---|---|
 | `AWS_ENDPOINT_URL_S3` | S3-compatible endpoint (e.g. MinIO) |
-| `DELTALAKE_BUCKET` | Bucket for Delta Lake tables and medicine CSVs (default: `deltalake`) |
+| `DELTALAKE_BUCKET` | Bucket for all Delta Lake tables plus hand-maintained raw inputs (medicine CSVs, `poi.geojson`, OwnTracks `.rec` files) (default: `deltalake`) |
