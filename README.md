@@ -1,5 +1,8 @@
 # dagster-gadgetbridge
 
+[![Maintainability](https://qlty.sh/gh/leprechaun/projects/dagster-gadgetbridge/maintainability.svg)](https://qlty.sh/gh/leprechaun/projects/dagster-gadgetbridge)
+[![Code Coverage](https://qlty.sh/gh/leprechaun/projects/dagster-gadgetbridge/coverage.svg)](https://qlty.sh/gh/leprechaun/projects/dagster-gadgetbridge)
+
 A Dagster pipeline that ingests health data exported by the [Gadgetbridge](https://gadgetbridge.org/) Android app from an Amazfit/Huami wearable, [OwnTracks](https://owntracks.org/) location history, and a hand-curated points-of-interest file, transforming them into analytics-ready datasets stored in Delta Lake.
 
 ## How it works
