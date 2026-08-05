@@ -51,8 +51,9 @@ Asset checks that block promotion on failure: heart rate in range, battery 0–1
 | `daily_heart_rate_distribution` | Daily histogram of heart rate in 5 bpm bins (40–160 range). |
 | `sleep_periods_based_on_activity` | Individual sleep periods (start/end) derived from contiguous "asleep" activity samples |
 | `daily_sleep_duration` | Nightly sleep duration (minutes), sleep start, and wake time, aggregated from `sleep_periods_based_on_activity` — a base for future moving-average and medication/stress join assets |
+| `sleep_sessions` | Per-session sleep score, start/end time, and stage count, decoded from `huami_sleep_session_sample`'s binary blobs (parsing lives in `sleep_session.py`'s `SleepSession`). Sessions with `stage_count == 0` or `start == 0` — garbage/incomplete records — are dropped. |
 
-Blocking asset check on `daily_sleep_duration`, defined as a [pandera](https://pandera.readthedocs.io/) schema (`DailySleepDurationSchema` in `silver.py`): total sleep 0–1440 minutes, sleep start before wake time. On failure, every violated row/check is reported in one pass via pandera's lazy validation, not just the first.
+Blocking asset checks, both defined as [pandera](https://pandera.readthedocs.io/) schemas: `daily_sleep_duration` (`DailySleepDurationSchema` in `silver.py`) validates total sleep 0–1440 minutes and sleep start before wake time; `sleep_sessions` (`SleepSessionsSchema`) validates `start` > 0, session length 0–1440 minutes, score 0–100 (unconfirmed against real device data — see the ASSUMPTION comment in `silver.py`), stage count > 0, and session start before end. On failure, every violated row/check is reported in one pass via pandera's lazy validation, not just the first.
 
 ### Gold
 
@@ -63,6 +64,9 @@ Blocking asset check on `daily_sleep_duration`, defined as a [pandera](https://p
 | `steps_vs_stress` | Daily step totals joined with average and median stress, for correlation analysis |
 | `heart_rate_distribution_by_medication_and_weekday` | Heart rate distribution grouped by active medication state and weekday vs. weekend |
 | `daily_sleep_schedule` | Nightly sleep start/end times normalized onto a common date, split by weekday vs. weekend, for overlay charting |
+| `sleep_score_stats` | Daily sleep score statistics (mean, max, session count) from `sleep_sessions`, with a 7-day rolling average and a weekday/weekend flag |
+
+Blocking asset check on `sleep_score_stats`, defined as a pandera schema (`SleepScoreStatsSchema` in `gold.py`): `mean_score`/`max_score`/`score_7d_ma` in 0–100 (`score_7d_ma` may be null for the first 6 days of data), `session_count` > 0, and `mean_score` ≤ `max_score`.
 
 ## OwnTracks
 
@@ -102,8 +106,9 @@ Tests live in `tests/` and run without any external dependencies — no S3, no D
 | File | What it covers |
 |---|---|
 | `test_bronze.py` | Epoch-to-datetime conversion for second and millisecond timestamps; pass/fail behavior of every range-bound asset check |
-| `test_silver.py` | Row count, minute truncation, left-join nulls for missing data, multi-sample aggregation within a minute, column set, sort order; sleep period detection, `daily_sleep_duration` aggregation across interrupted/multiple nights, and its range/invariant asset check |
-| `test_gold.py` | `daily_health_snapshot` cross-metric join and daily averaging |
+| `test_silver.py` | Row count, minute truncation, left-join nulls for missing data, multi-sample aggregation within a minute, column set, sort order; sleep period detection, `daily_sleep_duration` aggregation across interrupted/multiple nights, and its range/invariant asset check; `sleep_sessions` decoding, dropping zero-`stage_count`/zero-`start` rows, and its range/invariant asset check |
+| `test_sleep_session.py` | `SleepSession` binary blob parsing: scalar field offsets, per-stage decoding, stage timing relative to the previous midnight, total duration summation |
+| `test_gold.py` | `daily_health_snapshot` cross-metric join and daily averaging; `sleep_score_stats` aggregation, 7-day rolling average, weekday/weekend flag, and its range/invariant asset check |
 | `test_medicine.py` | Date-range expansion from prescriptions, null end-date handling, skip application, dosage calculation |
 | `test_s3_watch.py` | Cursor parsing and skip-vs-run decision logic shared by every sensor: ETag/HEAD-based change detection and LIST-based prefix diffing/grouping into run requests |
 | `test_s3_sensor.py` | Wiring for the SQLite S3 sensor: name, poll interval, asset selection |
