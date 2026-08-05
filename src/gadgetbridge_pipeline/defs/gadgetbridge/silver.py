@@ -242,7 +242,12 @@ def sleep_sessions(sleep: pl.DataFrame):
 
     yday_midnight = (pl.col("midnight") - pl.duration(hours=24))
 
-    sessions_df = pl.DataFrame(sessions).with_columns(
+    # stage_count == 0 or start == 0 sessions carry no real stage data and
+    # produce garbage (e.g. epoch-zero) midnight/start/end values, surfacing
+    # as invalid dates.
+    sessions_df = pl.DataFrame(sessions).filter(
+        (pl.col("stage_count") != 0) & (pl.col("start") != 0)
+    ).with_columns(
         pl.from_epoch(pl.col("midnight")).dt.convert_time_zone("Asia/Bangkok"),
         pl.col("rec")
     ).with_columns(
@@ -258,10 +263,11 @@ def sleep_sessions(sleep: pl.DataFrame):
 
 
 class SleepSessionsSchema(pa.DataFrameModel):
+    start: Series[int] = pa.Field(gt=0)
     length_minutes: Series[int] = pa.Field(ge=0, le=1440)
     # ASSUMPTION: score is a 0-100 percentage; unconfirmed against real device data.
     score: Series[int] = pa.Field(ge=0, le=100)
-    stage_count: Series[int] = pa.Field(ge=0)
+    stage_count: Series[int] = pa.Field(gt=0)
 
     @pa.dataframe_check
     def sstart_before_send(cls, data: pa.PolarsData) -> pl.LazyFrame:

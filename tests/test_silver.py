@@ -316,23 +316,28 @@ def _u8(v):
     return v.to_bytes(1, byteorder="little", signed=False)
 
 
-def _sleep_session_bytes(midnight=0, start=0, end=0, score=0):
-    # Same offsets as SleepSession: 0x04 midnight, 0x0a start, 0x0c end, 0x16 score.
+def _sleep_session_bytes(midnight=0, start=0, end=0, score=0, stage_count=1):
+    # Same offsets as SleepSession: 0x04 midnight, 0x0a start, 0x0c end, 0x16
+    # score, 0x54 stage_count.
     buf = bytearray(0x56)
     buf[0x04:0x08] = _u32(midnight)
     buf[0x0a:0x0c] = _u16(start)
     buf[0x0c:0x0e] = _u16(end)
     buf[0x16:0x17] = _u8(score)
+    buf[0x54:0x55] = _u8(stage_count)
     return bytes(buf)
 
 
 def _sleep_bronze(*rows):
-    # each row: (timestamp, midnight_epoch, start_min, end_min, score)
+    # each row: (timestamp, midnight_epoch, start_min, end_min, score, stage_count=1)
     return pl.DataFrame({
         "TIMESTAMP": [r[0] for r in rows],
         "DEVICE_ID": [1] * len(rows),
         "USER_ID":   [1] * len(rows),
-        "DATA":      [_sleep_session_bytes(r[1], r[2], r[3], r[4]) for r in rows],
+        "DATA": [
+            _sleep_session_bytes(r[1], r[2], r[3], r[4], r[5] if len(r) > 5 else 1)
+            for r in rows
+        ],
     })
 
 
@@ -378,8 +383,8 @@ def test_sleep_sessions_sstart_send_are_relative_to_previous_midnight():
 
 def test_sleep_sessions_index_and_rec_track_input_rows():
     sleep = _sleep_bronze(
-        (_ts_utc("2024-01-14 00:00:00"), 1_700_000_000, 0, 60, 50),
-        (_ts_utc("2024-01-15 00:00:00"), 1_700_086_400, 0, 90, 60),
+        (_ts_utc("2024-01-14 00:00:00"), 1_700_000_000, 10, 60, 50),
+        (_ts_utc("2024-01-15 00:00:00"), 1_700_086_400, 20, 90, 60),
     )
     result = sleep_sessions(sleep)
     assert result["index"].to_list() == [0, 1]
@@ -389,32 +394,63 @@ def test_sleep_sessions_index_and_rec_track_input_rows():
     ]
 
 
-# sleep_sessions_checks — length_minutes in [0, 1440], score in [0, 100],
-# stage_count >= 0, sstart < send
+def test_sleep_sessions_drops_rows_with_zero_stage_count():
+    sleep = _sleep_bronze(
+        (_ts_utc("2024-01-14 00:00:00"), 1_700_000_000, 10, 60, 50, 0),
+        (_ts_utc("2024-01-15 00:00:00"), 1_700_086_400, 20, 90, 60, 3),
+    )
+    result = sleep_sessions(sleep)
+    assert result.shape[0] == 1
+    assert result["rec"].to_list() == [_ts_utc("2024-01-15 00:00:00")]
+
+
+def test_sleep_sessions_drops_rows_with_zero_start():
+    sleep = _sleep_bronze(
+        (_ts_utc("2024-01-14 00:00:00"), 1_700_000_000, 0, 60, 50),
+        (_ts_utc("2024-01-15 00:00:00"), 1_700_086_400, 20, 90, 60),
+    )
+    result = sleep_sessions(sleep)
+    assert result.shape[0] == 1
+    assert result["rec"].to_list() == [_ts_utc("2024-01-15 00:00:00")]
+
+
+# sleep_sessions_checks — start > 0, length_minutes in [0, 1440],
+# score in [0, 100], stage_count > 0, sstart < send
 
 def _sleep_sessions_df(*rows):
-    # each row: (length_minutes, score, stage_count, sstart, send) — sstart/send
-    # as "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
+    # each row: (start, length_minutes, score, stage_count, sstart, send) —
+    # sstart/send as "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
     return pl.DataFrame({
-        "length_minutes": [r[0] for r in rows],
-        "score":          [r[1] for r in rows],
-        "stage_count":    [r[2] for r in rows],
-        "sstart":         pl.Series([_bkk(r[3]) for r in rows]),
-        "send":           pl.Series([_bkk(r[4]) for r in rows]),
+        "start":          [r[0] for r in rows],
+        "length_minutes": [r[1] for r in rows],
+        "score":          [r[2] for r in rows],
+        "stage_count":    [r[3] for r in rows],
+        "sstart":         pl.Series([_bkk(r[4]) for r in rows]),
+        "send":           pl.Series([_bkk(r[5]) for r in rows]),
     })
 
 
 def test_sleep_sessions_checks_passes():
     df = _sleep_sessions_df(
-        (450, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+        (30, 450, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
     )
     result = sleep_sessions_checks(df)
     assert result.passed
 
 
+def test_sleep_sessions_checks_fails_on_zero_start():
+    df = _sleep_sessions_df(
+        (0, 450, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = sleep_sessions_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["column"] == "start" for f in failures)
+
+
 def test_sleep_sessions_checks_fails_on_negative_length():
     df = _sleep_sessions_df(
-        (-10, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+        (30, -10, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
     )
     result = sleep_sessions_checks(df)
     assert not result.passed
@@ -424,7 +460,7 @@ def test_sleep_sessions_checks_fails_on_negative_length():
 
 def test_sleep_sessions_checks_fails_above_24h():
     df = _sleep_sessions_df(
-        (1441, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+        (30, 1441, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
     )
     result = sleep_sessions_checks(df)
     assert not result.passed
@@ -434,7 +470,7 @@ def test_sleep_sessions_checks_fails_above_24h():
 
 def test_sleep_sessions_checks_fails_on_score_out_of_range():
     df = _sleep_sessions_df(
-        (450, 150, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+        (30, 450, 150, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
     )
     result = sleep_sessions_checks(df)
     assert not result.passed
@@ -444,7 +480,7 @@ def test_sleep_sessions_checks_fails_on_score_out_of_range():
 
 def test_sleep_sessions_checks_fails_when_sstart_not_before_send():
     df = _sleep_sessions_df(
-        (450, 80, 6, "2024-01-15 07:00:00", "2024-01-14 23:00:00"),
+        (30, 450, 80, 6, "2024-01-15 07:00:00", "2024-01-14 23:00:00"),
     )
     result = sleep_sessions_checks(df)
     assert not result.passed
