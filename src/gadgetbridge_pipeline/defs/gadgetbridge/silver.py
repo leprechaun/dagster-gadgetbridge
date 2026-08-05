@@ -1,4 +1,5 @@
 import datetime
+from collections import defaultdict
 
 import dagster as dg
 import pandera.polars as pa
@@ -6,6 +7,8 @@ import polars as pl
 from dagster import AssetCheckResult, AutomationCondition, Definitions
 from pandera.engines.polars_engine import DateTime
 from pandera.typing.polars import Series
+
+from gadgetbridge_pipeline.defs.gadgetbridge.sleep_session import SleepSession
 
 
 @dg.asset(
@@ -198,6 +201,60 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
         .sort(["date", "heart_rate"])
     )
 
+
+
+
+
+
+@dg.asset(
+    io_manager_key="deltalake_io_manager",
+    ins={
+        "sleep": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "bronze", "huami_sleep_session_sample"])
+        ),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description="Daily distribution of binned heart rates (5 bpm bins, 40-160 range)",
+)
+def sleep_sessions(sleep: pl.DataFrame):
+    defaultdict(list)
+
+    timestamps = list(sleep['TIMESTAMP'])
+    datas = list(sleep['DATA'])
+
+    sessions = []
+
+    index = 0
+    for kv2 in list(zip(timestamps, datas, strict=False)):
+        sleep_session2 = SleepSession(kv2[1])
+
+        sessions.append({
+            "index": index,
+            "rec": kv2[0],
+            "midnight": sleep_session2.midnight,
+            "start": sleep_session2.start,
+            "end": sleep_session2.end,
+            "stage_count": sleep_session2.stage_count,
+            "score": sleep_session2.score
+        })
+
+        index = index + 1
+
+    yday_midnight = (pl.col("midnight") - pl.duration(hours=24))
+
+    sessions_df = pl.DataFrame(sessions).with_columns(
+        pl.from_epoch(pl.col("midnight")).dt.convert_time_zone("Asia/Bangkok"),
+        pl.col("rec")
+    ).with_columns(
+        yday_midnight.alias("midnight_yday")
+    ).with_columns(
+        (pl.col("midnight_yday") + pl.duration(minutes=pl.col("start"))).alias("sstart"),
+        (pl.col("midnight_yday") + pl.duration(minutes=pl.col("end"))).alias("send")
+    ).drop(['midnight_yday', 'midnight']).with_columns(
+        pl.duration(minutes=(pl.col("end") - pl.col("start")).alias("length"))
+    )
+
+    return sessions_df
 
 defs = Definitions(
     assets=dg.load_assets_from_current_module(
