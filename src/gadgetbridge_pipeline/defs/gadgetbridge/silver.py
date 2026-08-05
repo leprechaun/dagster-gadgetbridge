@@ -256,10 +256,38 @@ def sleep_sessions(sleep: pl.DataFrame):
 
     return sessions_df
 
+
+class SleepSessionsSchema(pa.DataFrameModel):
+    length_minutes: Series[int] = pa.Field(ge=0, le=1440)
+    # ASSUMPTION: score is a 0-100 percentage; unconfirmed against real device data.
+    score: Series[int] = pa.Field(ge=0, le=100)
+    stage_count: Series[int] = pa.Field(ge=0)
+
+    @pa.dataframe_check
+    def sstart_before_send(cls, data: pa.PolarsData) -> pl.LazyFrame:
+        return data.lazyframe.select(pl.col("sstart") < pl.col("send"))
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["gadgetbridge", "silver", "sleep_sessions"]),
+    blocking=True,
+    name="sleep_sessions_range_checks",
+)
+def sleep_sessions_checks(sleep_sessions: pl.DataFrame) -> AssetCheckResult:
+    try:
+        SleepSessionsSchema.validate(sleep_sessions, lazy=True)
+    except pa.errors.SchemaErrors as exc:
+        return AssetCheckResult(
+            passed=False,
+            metadata={"failure_cases": exc.failure_cases.to_dicts()},
+        )
+    return AssetCheckResult(passed=True)
+
+
 defs = Definitions(
     assets=dg.load_assets_from_current_module(
         group_name="gadgetbridge",
         key_prefix=["gadgetbridge", "silver"],
     ),
-    asset_checks=[daily_sleep_duration_checks],
+    asset_checks=[daily_sleep_duration_checks, sleep_sessions_checks],
 )

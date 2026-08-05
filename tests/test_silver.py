@@ -9,6 +9,7 @@ from gadgetbridge_pipeline.defs.gadgetbridge.silver import (
     per_minute_health_metrics,
     sleep_periods_based_on_activity,
     sleep_sessions,
+    sleep_sessions_checks,
 )
 
 EXPECTED_COLUMNS = {
@@ -386,6 +387,69 @@ def test_sleep_sessions_index_and_rec_track_input_rows():
         _ts_utc("2024-01-14 00:00:00"),
         _ts_utc("2024-01-15 00:00:00"),
     ]
+
+
+# sleep_sessions_checks — length_minutes in [0, 1440], score in [0, 100],
+# stage_count >= 0, sstart < send
+
+def _sleep_sessions_df(*rows):
+    # each row: (length_minutes, score, stage_count, sstart, send) — sstart/send
+    # as "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
+    return pl.DataFrame({
+        "length_minutes": [r[0] for r in rows],
+        "score":          [r[1] for r in rows],
+        "stage_count":    [r[2] for r in rows],
+        "sstart":         pl.Series([_bkk(r[3]) for r in rows]),
+        "send":           pl.Series([_bkk(r[4]) for r in rows]),
+    })
+
+
+def test_sleep_sessions_checks_passes():
+    df = _sleep_sessions_df(
+        (450, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = sleep_sessions_checks(df)
+    assert result.passed
+
+
+def test_sleep_sessions_checks_fails_on_negative_length():
+    df = _sleep_sessions_df(
+        (-10, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = sleep_sessions_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["check"] == "greater_than_or_equal_to(0)" for f in failures)
+
+
+def test_sleep_sessions_checks_fails_above_24h():
+    df = _sleep_sessions_df(
+        (1441, 80, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = sleep_sessions_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["check"] == "less_than_or_equal_to(1440)" for f in failures)
+
+
+def test_sleep_sessions_checks_fails_on_score_out_of_range():
+    df = _sleep_sessions_df(
+        (450, 150, 6, "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
+    )
+    result = sleep_sessions_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["column"] == "score" for f in failures)
+
+
+def test_sleep_sessions_checks_fails_when_sstart_not_before_send():
+    df = _sleep_sessions_df(
+        (450, 80, 6, "2024-01-15 07:00:00", "2024-01-14 23:00:00"),
+    )
+    result = sleep_sessions_checks(df)
+    assert not result.passed
+    failures = result.metadata["failure_cases"].value
+    assert any(f["check"] == "sstart_before_send" for f in failures)
 
 
 # ---------------------------------------------------------------------------
