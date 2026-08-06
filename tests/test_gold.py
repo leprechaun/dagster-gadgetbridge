@@ -1,13 +1,17 @@
 import datetime
+import statistics
 from datetime import datetime as dt
 
 import polars as pl
+import pytest
 
 from gadgetbridge_pipeline.defs.gadgetbridge.gold import (
     _is_weekend,
+    _normalize_time_of_day,
     daily_health_snapshot,
     daily_sleep_schedule,
     heart_rate_distribution_by_medication_and_weekday,
+    sleep_consistency,
     sleep_score_stats,
     sleep_score_stats_checks,
     steps_per_day,
@@ -218,6 +222,32 @@ def _bkk(s):
     return dt.fromisoformat(s).replace(tzinfo=datetime.timezone(datetime.timedelta(hours=7)))
 
 
+# ---------------------------------------------------------------------------
+# _normalize_time_of_day
+# ---------------------------------------------------------------------------
+
+def _as_bangkok(*iso_strings):
+    # _normalize_time_of_day expects its input already converted to the
+    # target local zone (as daily_sleep_schedule/sleep_consistency both do
+    # before calling it) — a bare fixed-offset python datetime stores as UTC
+    # once it round-trips through polars, so re-localize explicitly here.
+    return pl.DataFrame({"t": [_bkk(s) for s in iso_strings]}).select(
+        pl.col("t").dt.convert_time_zone("Asia/Bangkok")
+    )
+
+
+def test_normalize_time_of_day_keeps_pre_cutoff_time_on_the_common_date():
+    df = _as_bangkok("2024-01-15 07:00:00")
+    result = df.select(_normalize_time_of_day(pl.col("t")).alias("t"))["t"][0]
+    assert result == _bkk("1900-01-01 07:00:00").replace(tzinfo=None)
+
+
+def test_normalize_time_of_day_shifts_post_cutoff_time_back_a_day():
+    df = _as_bangkok("2024-01-15 23:00:00")
+    result = df.select(_normalize_time_of_day(pl.col("t")).alias("t"))["t"][0]
+    assert result == _bkk("1899-12-31 23:00:00").replace(tzinfo=None)
+
+
 def _sleep_periods(*rows):
     # each row: (reporting_date, start, end) — start/end as
     # "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
@@ -394,3 +424,93 @@ def test_sleep_score_stats_checks_fails_when_mean_exceeds_max():
     assert not result.passed
     failures = result.metadata["failure_cases"].value
     assert any(f["check"] == "mean_score_le_max_score" for f in failures)
+
+
+# ---------------------------------------------------------------------------
+# sleep_consistency
+# ---------------------------------------------------------------------------
+
+def _daily_sleep_duration(*rows):
+    # each row: (reporting_date, sleep_start, wake_time) — start/end as
+    # "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
+    return pl.DataFrame({
+        "reporting_date": [r[0] for r in rows],
+        "sleep_start": pl.Series([_bkk(r[1]) for r in rows]),
+        "wake_time": pl.Series([_bkk(r[2]) for r in rows]),
+    })
+
+
+def _sleep_score_stats_rows(*rows):
+    # each row: (date, mean_score)
+    return pl.DataFrame({
+        "date": [r[0] for r in rows],
+        "mean_score": [r[1] for r in rows],
+    })
+
+
+def _regular_nights(n):
+    # n nights of identical 23:00 -> 07:00 sleep, dates 2024-01-01 .. 2024-01-0n
+    return [
+        (datetime.date(2024, 1, d), f"2024-01-{d:02d} 23:00:00", f"2024-01-{d + 1:02d} 07:00:00")
+        for d in range(1, n + 1)
+    ]
+
+
+def test_sleep_consistency_perfectly_regular_bedtime_wake_and_score_has_zero_stddev():
+    nights = _regular_nights(14)
+    duration = _daily_sleep_duration(*nights)
+    stats = _sleep_score_stats_rows(*[(d, 80.0) for d, _, _ in nights])
+
+    result = sleep_consistency(duration, stats).sort("date")
+    last = result.tail(1)
+
+    assert last["sleep_start_stddev_minutes"][0] == pytest.approx(0.0, abs=1e-6)
+    assert last["wake_time_stddev_minutes"][0] == pytest.approx(0.0, abs=1e-6)
+    assert last["score_stddev"][0] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_sleep_consistency_null_before_window_fills():
+    nights = _regular_nights(5)
+    duration = _daily_sleep_duration(*nights)
+    stats = _sleep_score_stats_rows(*[(d, 80.0) for d, _, _ in nights])
+
+    result = sleep_consistency(duration, stats)
+
+    assert result["sleep_start_stddev_minutes"].null_count() == result.shape[0]
+    assert result["wake_time_stddev_minutes"].null_count() == result.shape[0]
+    assert result["score_stddev"].null_count() == result.shape[0]
+
+
+def test_sleep_consistency_matches_hand_computed_stddev():
+    # wake time alternates 07:00 / 07:10 across 14 nights — a known, irregular sequence
+    offsets = [0, 10] * 7
+    rows = []
+    for i, offset in enumerate(offsets, start=1):
+        hour, minute = divmod(7 * 60 + offset, 60)
+        rows.append((
+            datetime.date(2024, 1, i),
+            f"2024-01-{i:02d} 23:00:00",
+            f"2024-01-{i + 1:02d} {hour:02d}:{minute:02d}:00",
+        ))
+    duration = _daily_sleep_duration(*rows)
+    stats = _sleep_score_stats_rows(*[(d, 80.0) for d, _, _ in rows])
+
+    result = sleep_consistency(duration, stats).sort("date")
+
+    expected = statistics.stdev(offsets)
+    assert result["wake_time_stddev_minutes"][-1] == pytest.approx(expected, abs=1e-6)
+
+
+def test_sleep_consistency_outer_joins_dates_present_in_only_one_input():
+    duration = _daily_sleep_duration(
+        (datetime.date(2024, 1, 1), "2024-01-01 23:00:00", "2024-01-02 07:00:00"),
+    )
+    stats = _sleep_score_stats_rows(
+        (datetime.date(2024, 1, 2), 80.0),
+    )
+
+    result = sleep_consistency(duration, stats).sort("date")
+
+    assert result["date"].to_list() == [datetime.date(2024, 1, 1), datetime.date(2024, 1, 2)]
+    assert result["score_stddev"][0] is None
+    assert result["sleep_start_stddev_minutes"][1] is None

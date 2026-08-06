@@ -65,6 +65,7 @@ Blocking asset checks, both defined as [pandera](https://pandera.readthedocs.io/
 | `heart_rate_distribution_by_medication_and_weekday` | Heart rate distribution grouped by active medication state and weekday vs. weekend |
 | `daily_sleep_schedule` | Nightly sleep start/end times normalized onto a common date, split by weekday vs. weekend, for overlay charting |
 | `sleep_score_stats` | Daily sleep score statistics (mean, max, session count) from `sleep_sessions`, with a 7-day rolling average and a weekday/weekend flag |
+| `sleep_consistency` | Rolling 14-day standard deviation of bedtime, wake time, and sleep score (from `daily_sleep_duration` and `sleep_score_stats`) — how *regular* sleep is, kept as separate columns from how *good* it is |
 
 Blocking asset check on `sleep_score_stats`, defined as a pandera schema (`SleepScoreStatsSchema` in `gold.py`): `mean_score`/`max_score`/`score_7d_ma` in 0–100 (`score_7d_ma` may be null for the first 6 days of data), `session_count` > 0, and `mean_score` ≤ `max_score`.
 

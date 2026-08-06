@@ -12,6 +12,21 @@ def _is_weekend(date_col: str) -> pl.Expr:
     return pl.col(date_col).dt.weekday() >= 6
 
 
+_COMMON_DATE = datetime.date(1900, 1, 1)
+_CUTOFF = datetime.time(15, 0)
+_ONE_DAY = pl.duration(days=1)
+
+
+def _normalize_time_of_day(expr: pl.Expr) -> pl.Expr:
+    """Fold a local datetime onto a common date, keeping only its time-of-day,
+    then push times after `_CUTOFF` back a day so an evening bedtime and the
+    following morning's wake time land on one continuous numeric axis instead
+    of reading as ~24h apart (e.g. 23:30 and 00:15 sixteen minutes later).
+    """
+    combined = pl.lit(_COMMON_DATE).dt.combine(expr.dt.time())
+    return pl.when(combined.dt.time() > _CUTOFF).then(combined - _ONE_DAY).otherwise(combined)
+
+
 @dg.asset(
     io_manager_key="deltalake_io_manager",
     ins={
@@ -196,9 +211,6 @@ def heart_rate_distribution_by_medication_and_weekday(
 )
 def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     TZ = "Asia/Bangkok"
-    CUTOFF = datetime.time(15, 0)
-    ONE_DAY = pl.duration(days=1)
-    COMMON_DATE = datetime.date(1900, 1, 1)
 
     return (
         sleep_periods
@@ -211,16 +223,10 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
             _is_weekend("reporting_date").alias("is_weekend")
         )
         .with_columns(
-            pl.lit(COMMON_DATE).dt.combine(pl.col("start").dt.time()).alias("start"),
-            pl.lit(COMMON_DATE).dt.combine(pl.col("end").dt.time()).alias("end"),
+            _normalize_time_of_day(pl.col("start")).alias("start"),
+            _normalize_time_of_day(pl.col("end")).alias("end"),
         )
         .with_columns(
-            pl.when(pl.col("start").dt.time() > CUTOFF)
-            .then(pl.col("start") - ONE_DAY)
-            .otherwise(pl.col("start")),
-            pl.when(pl.col("end").dt.time() > CUTOFF)
-            .then(pl.col("end") - ONE_DAY)
-            .otherwise(pl.col("end")),
             pl.col("reporting_date").dt.strftime("%Y-%m-%d"),
         )
     )
@@ -257,6 +263,73 @@ def sleep_score_stats(sleep_sessions: pl.DataFrame) -> pl.DataFrame:
             pl.col("mean_score").rolling_mean(window_size=7).round(1).alias("score_7d_ma"),
         )
     )
+
+
+_CONSISTENCY_WINDOW_DAYS = 14
+
+
+@dg.asset(
+    io_manager_key="deltalake_io_manager",
+    ins={
+        "daily_sleep_duration": dg.AssetIn(
+            key=dg.AssetKey(["gadgetbridge", "silver", "daily_sleep_duration"])
+        ),
+        # bare key: sleep_score_stats is defined in this same module, so
+        # load_assets_from_current_module's key_prefix rewrites this
+        # reference the same way it prefixes sleep_score_stats' own key —
+        # giving the already-prefixed key here would double-prefix it.
+        "sleep_score_stats": dg.AssetIn(key=dg.AssetKey(["sleep_score_stats"])),
+    },
+    automation_condition=AutomationCondition.eager(),
+    description=(
+        f"Rolling {_CONSISTENCY_WINDOW_DAYS}-day standard deviation of bedtime, wake time, "
+        "and sleep score — how regular sleep is, kept separate from how good it is"
+    ),
+)
+def sleep_consistency(
+    daily_sleep_duration: pl.DataFrame,
+    sleep_score_stats: pl.DataFrame,
+) -> pl.DataFrame:
+    timing = (
+        daily_sleep_duration
+        .select(["reporting_date", "sleep_start", "wake_time"])
+        .with_columns(
+            pl.col(["sleep_start", "wake_time"]).dt.convert_time_zone("Asia/Bangkok")
+        )
+        .sort("reporting_date")
+        .with_columns(
+            _normalize_time_of_day(pl.col("sleep_start")).alias("sleep_start"),
+            _normalize_time_of_day(pl.col("wake_time")).alias("wake_time"),
+        )
+        .with_columns(
+            (pl.col("sleep_start").dt.epoch(time_unit="s") / 60.0).alias("sleep_start_minutes"),
+            (pl.col("wake_time").dt.epoch(time_unit="s") / 60.0).alias("wake_time_minutes"),
+        )
+        .with_columns(
+            pl.col("sleep_start_minutes")
+            .rolling_std(window_size=_CONSISTENCY_WINDOW_DAYS)
+            .alias("sleep_start_stddev_minutes"),
+            pl.col("wake_time_minutes")
+            .rolling_std(window_size=_CONSISTENCY_WINDOW_DAYS)
+            .alias("wake_time_stddev_minutes"),
+        )
+        .select(["reporting_date", "sleep_start_stddev_minutes", "wake_time_stddev_minutes"])
+        .rename({"reporting_date": "date"})
+    )
+
+    score = (
+        sleep_score_stats
+        .select(["date", "mean_score"])
+        .sort("date")
+        .with_columns(
+            pl.col("mean_score")
+            .rolling_std(window_size=_CONSISTENCY_WINDOW_DAYS)
+            .alias("score_stddev"),
+        )
+        .select(["date", "score_stddev"])
+    )
+
+    return timing.join(score, on="date", how="full", coalesce=True).sort("date")
 
 
 class SleepScoreStatsSchema(pa.DataFrameModel):
