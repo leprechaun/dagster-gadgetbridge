@@ -165,8 +165,6 @@ def _make_asset(table_name: str, settings: dict[str, Any]):
 
         return transformed
 
-    _asset.__name__ = table_name
-
     return _asset
 
 def _make_asset_check(table_name: str, settings: dict[str, Any]):
