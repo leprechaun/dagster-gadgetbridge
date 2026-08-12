@@ -12,6 +12,8 @@ from dagster import (
 )
 
 START_OF_DATA_COLLECTION = datetime(2026, 1, 1, tzinfo=timezone.utc)
+TYPE_DS_UTC_US = pl.Datetime(time_unit='us', time_zone='UTC')
+
 
 def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
     return df.with_columns(
@@ -27,7 +29,6 @@ def _read_table(table: str, db_path: str) -> pl.DataFrame:
         f"sqlite://{db_path}"
     )
 
-TYPE_DS_UTC_US = pl.Datetime(time_unit='us', time_zone='UTC')
 
 _TABLES = {
     "huami_extended_activity_sample": {
