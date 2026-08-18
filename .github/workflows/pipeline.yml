@@ -48,7 +48,7 @@ jobs:
         run: uv run dg check defs
 
       - name: Run tests
-        run: uv run pytest -v tests/
+        run: uv run pytest --cov-report markdown-append:$GITHUB_STEP_SUMMARY -v tests/
 
       - name: Export coverage
         run: uv run coverage lcov
