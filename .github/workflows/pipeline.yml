@@ -33,6 +33,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -101,6 +103,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
       - name: install wireguard
