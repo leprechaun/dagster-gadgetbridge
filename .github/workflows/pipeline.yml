@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [master]
 jobs:
   analyze:
     name: Analyze
@@ -60,7 +59,6 @@ jobs:
 
   build-and-push:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,6 +68,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Log in to GHCR
+        if: github.ref == 'refs/heads/master'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -92,7 +91,9 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
+          # only push the built image to GHCR on master — other branches
+          # (including renovate/*) just verify the image still builds
+          push: ${{ github.ref == 'refs/heads/master' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -101,6 +102,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       contents: read
     steps:
