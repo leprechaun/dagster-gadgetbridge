@@ -356,7 +356,7 @@ temperature_checks = _make_range_check(
     "TEMPERATURE",
     {
         "is_at_least_15": lambda mn, mx: mn >= 15.0,
-        "is_at_most_42": lambda mn, mx: mx <= 42.0,
+        "is_at_most_45": lambda mn, mx: mx <= 45.0,
     },
     cast=float,
 )

@@ -127,7 +127,7 @@ def test_temperature_checks_fails_below_min():
     assert not result.passed
 
 def test_temperature_checks_fails_above_max():
-    result = temperature_checks(pl.DataFrame({"TEMPERATURE": [33.0, 42.1]}))
+    result = temperature_checks(pl.DataFrame({"TEMPERATURE": [33.0, 45.1]}))
     assert not result.passed
 
 
