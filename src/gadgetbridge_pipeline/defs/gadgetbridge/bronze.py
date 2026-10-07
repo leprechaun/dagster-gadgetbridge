@@ -298,9 +298,16 @@ def _make_range_check(
         maximum = cast(df[column].max())
 
         results = {check_name: fn(minimum, maximum) for check_name, fn in checks.items()}
+        failed = [check_name for check_name, ok in results.items() if not ok]
 
         return AssetCheckResult(
-            passed=all(results.values()),
+            passed=not failed,
+            description=(
+                f"{column!r} out of bounds — failed {', '.join(failed)} "
+                f"(min={minimum}, max={maximum})"
+                if failed
+                else None
+            ),
             metadata=results | {"minimum": minimum, "maximum": maximum},
         )
 

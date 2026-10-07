@@ -38,17 +38,22 @@ def test_heartrate_checks_pass():
     assert result.metadata["maximum"].value == 120
     assert result.metadata["is_positive"].value is True
     assert result.metadata["is_255 or below"].value is True
+    assert result.description is None
 
 def test_heartrate_checks_fails_on_zero():
     result = activity_heartrate_checks(_hr_df([0, 60, 120]))
     assert not result.passed
     assert result.metadata["is_positive"].value is False
+    assert "is_positive" in result.description
+    assert "is_255 or below" not in result.description
 
 
 def test_heartrate_checks_fails_above_255():
     result = activity_heartrate_checks(_hr_df([60, 120, 256]))
     assert not result.passed
     assert result.metadata["is_255 or below"].value is False
+    assert "is_255 or below" in result.description
+    assert "is_positive" not in result.description
 
 
 def test_heartrate_checks_fails_both():
@@ -56,6 +61,8 @@ def test_heartrate_checks_fails_both():
     assert not result.passed
     assert result.metadata["is_positive"].value is False
     assert result.metadata["is_255 or below"].value is False
+    assert "is_positive" in result.description
+    assert "is_255 or below" in result.description
 
 
 def test_heartrate_checks_fails_gracefully_on_empty_table():
