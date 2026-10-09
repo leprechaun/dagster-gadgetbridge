@@ -160,3 +160,4 @@ Environment variables required (see `.env.k8s` for the Kubernetes set):
 |---|---|
 | `AWS_ENDPOINT_URL_S3` | S3-compatible endpoint (e.g. MinIO) |
 | `DELTALAKE_BUCKET` | Bucket for all Delta Lake tables plus hand-maintained raw inputs (medicine CSVs, `poi.geojson`, OwnTracks `.rec` files) (default: `deltalake`) |
+| `APPRISE_NOTIFICATION_URL` | Optional. [Apprise](https://github.com/caronc/apprise) URL to notify on every run's SUCCESS/FAILURE. Unset disables notifications entirely. |

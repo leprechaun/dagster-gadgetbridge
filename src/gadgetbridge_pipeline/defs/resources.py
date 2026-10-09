@@ -4,11 +4,13 @@ import tempfile
 import boto3
 import dagster as dg
 from dagster import Definitions, EnvVar, InputContext, OutputContext
+from dagster_apprise import AppriseNotificationsConfig, apprise_notifications
 from dagster_deltalake import S3Config
 from dagster_deltalake_polars import DeltaLakePolarsIOManager
 from dagster_openlineage import openlineage_sensor
 
 _deltalake_bucket = os.environ.get("DELTALAKE_BUCKET", "deltalake")
+_apprise_url = os.environ.get("APPRISE_NOTIFICATION_URL")
 
 GADGETBRIDGE_DB_BUCKET = "android-backups"
 GADGETBRIDGE_DB_KEY = "GadgetBridge/Gadgetbridge.db"
@@ -88,3 +90,19 @@ defs = Definitions(
         ),
     }
 )
+
+if _apprise_url:
+    # Notify on every run, regardless of which asset(s) it touched — run-level,
+    # not per-asset, since Dagster's auto-materialize daemon batches a tick's
+    # downstream chain into one run. Deliberately unfiltered for now; narrow
+    # via include_jobs/exclude_jobs once the noise level is known.
+    defs = Definitions.merge(
+        defs,
+        apprise_notifications(
+            AppriseNotificationsConfig(
+                urls=[_apprise_url],
+                events=["SUCCESS", "FAILURE"],
+                title_prefix="Gadgetbridge Pipeline",
+            )
+        ),
+    )

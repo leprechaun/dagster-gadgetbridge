@@ -13,6 +13,7 @@ dependencies = [
     "dagster-postgres>=0.29.8",
     "polars>=1.41.2",
     "pandera[polars]>=0.32.0",
+    "dagster-apprise>=0.0.3",
 ]
 
 [dependency-groups]
