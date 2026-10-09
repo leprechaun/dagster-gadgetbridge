@@ -23,4 +23,5 @@ deployments:
     - "/deploy_k8s/src/gadgetbridge_pipeline/definitions.py"
   port: 3030
   envSecrets:
+    - name: dagster-shared
     - name: gadgetbridge
