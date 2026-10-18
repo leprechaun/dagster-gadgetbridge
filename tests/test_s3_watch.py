@@ -102,6 +102,16 @@ def test_plan_prefix_default_run_key_stable_for_same_input():
     )
 
 
+def test_plan_prefix_default_run_key_stable_regardless_of_key_insertion_order():
+    a = "owntracks/raw/waypoints/alice/phone/3fbee5a5.json"
+    b = "owntracks/raw/waypoints/alice/phone/aaaa0000.json"
+    current_ab = {a: "etag1", b: "etag2"}
+    current_ba = {b: "etag2", a: "etag1"}
+    run_key_ab = plan_prefix_run_requests(current_ab, {})[0]["run_key"]
+    run_key_ba = plan_prefix_run_requests(current_ba, {})[0]["run_key"]
+    assert run_key_ab == run_key_ba
+
+
 def _month_from_key(key: str) -> str:
     return key.split("/")[-1].removesuffix(".rec")
 
