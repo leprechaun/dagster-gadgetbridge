@@ -178,6 +178,17 @@ def test_heart_rate_distribution_combines_multiple_medicines_taken_same_day_sort
     assert result["medication_state"].to_list() == ["aspirin + zolpidem"]
 
 
+def test_heart_rate_distribution_dedups_same_medicine_taken_twice_same_day():
+    # e.g. overlapping prescriptions for the same medicine
+    hr = _hr_distribution((datetime.date(2024, 1, 15), 60, 10))
+    med = _medicine_log(
+        (datetime.date(2024, 1, 15), "aspirin", True),
+        (datetime.date(2024, 1, 15), "aspirin", True),
+    )
+    result = heart_rate_distribution_by_medication_and_weekday(hr, med)
+    assert result["medication_state"].to_list() == ["aspirin"]
+
+
 def test_heart_rate_distribution_aggregates_across_dates_within_same_group():
     hr = _hr_distribution(
         (datetime.date(2024, 1, 15), 60, 10),  # Monday

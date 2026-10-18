@@ -174,7 +174,7 @@ def heart_rate_distribution_by_medication_and_weekday(
         medicine_log
         .filter(pl.col("taken"))
         .group_by("date")
-        .agg(pl.col("medicine").sort().str.join(" + ").alias("medication_state"))
+        .agg(pl.col("medicine").unique().sort().str.join(" + ").alias("medication_state"))
     )
 
     return (
