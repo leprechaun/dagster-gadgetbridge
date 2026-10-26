@@ -1,5 +1,4 @@
 import datetime
-from collections import defaultdict
 
 import dagster as dg
 import pandera.polars as pa
@@ -217,8 +216,6 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     description="Sleep session information (start, length, periods, score, etc)",
 )
 def sleep_sessions(sleep: pl.DataFrame):
-    defaultdict(list)
-
     timestamps = list(sleep['TIMESTAMP'])
     datas = list(sleep['DATA'])
 
