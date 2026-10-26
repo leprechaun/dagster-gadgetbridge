@@ -100,7 +100,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: build-and-push
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
