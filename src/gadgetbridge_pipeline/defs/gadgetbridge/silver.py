@@ -216,26 +216,19 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     description="Sleep session information (start, length, periods, score, etc)",
 )
 def sleep_sessions(sleep: pl.DataFrame):
-    timestamps = list(sleep['TIMESTAMP'])
-    datas = list(sleep['DATA'])
-
     sessions = []
-
-    index = 0
-    for kv2 in list(zip(timestamps, datas, strict=False)):
-        sleep_session2 = SleepSession(kv2[1])
+    for index, (rec, data) in enumerate(zip(sleep['TIMESTAMP'], sleep['DATA'], strict=False)):
+        session = SleepSession(data)
 
         sessions.append({
             "index": index,
-            "rec": kv2[0],
-            "midnight": sleep_session2.midnight,
-            "start": sleep_session2.start,
-            "end": sleep_session2.end,
-            "stage_count": sleep_session2.stage_count,
-            "score": sleep_session2.score
+            "rec": rec,
+            "midnight": session.midnight,
+            "start": session.start,
+            "end": session.end,
+            "stage_count": session.stage_count,
+            "score": session.score
         })
-
-        index = index + 1
 
     yday_midnight = (pl.col("midnight") - pl.duration(hours=24))
 
