@@ -5,9 +5,11 @@ import boto3
 import dagster as dg
 from dagster import Definitions, EnvVar, InputContext, OutputContext
 from dagster_apprise import AppriseNotificationsConfig, apprise_notifications
-from dagster_deltalake import S3Config
-from dagster_deltalake_polars import DeltaLakePolarsIOManager
+from dagster_deltalake import DeltaLakePyArrowTypeHandler, S3Config
+from dagster_deltalake.io_manager import TableConnection
+from dagster_deltalake_polars import DeltaLakePolarsIOManager, DeltaLakePolarsTypeHandler
 from dagster_openlineage import openlineage_sensor
+from deltalake import DeltaTable
 
 _deltalake_bucket = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _apprise_url = os.environ.get("APPRISE_NOTIFICATION_URL")
@@ -47,6 +49,41 @@ class FileS3IOManager(dg.ConfigurableIOManager):
         return local_path
 
 
+# Asset metadata flag: copy the asset's description onto its Delta table, so
+# readers outside Dagster (e.g. the marimo notebooks) can see it.
+SYNC_DELTA_DESCRIPTION = "sync_delta_description"
+
+
+def sync_table_description(dt: DeltaTable, description: str | None) -> bool:
+    """Set the table's Delta-level description, returning whether it changed.
+
+    Each alter is its own commit in the Delta log, so only write when the
+    description actually differs.
+    """
+    if not description or dt.metadata().description == description:
+        return False
+    dt.alter.set_table_description(description)
+    return True
+
+
+class DescribedDeltaLakePolarsTypeHandler(DeltaLakePolarsTypeHandler):
+    def handle_output(self, context: OutputContext, table_slice, obj, connection: TableConnection):
+        super().handle_output(context, table_slice, obj, connection)
+        if not context.definition_metadata.get(SYNC_DELTA_DESCRIPTION):
+            return
+        dt = DeltaTable(connection.table_uri, storage_options=connection.storage_options)
+        if sync_table_description(dt, context.asset_spec.description):
+            context.log.info(f"Updated Delta table description on {connection.table_uri}")
+
+
+class DescribedDeltaLakePolarsIOManager(DeltaLakePolarsIOManager):
+    """DeltaLakePolarsIOManager that also honours SYNC_DELTA_DESCRIPTION."""
+
+    @staticmethod
+    def type_handlers():
+        return [DescribedDeltaLakePolarsTypeHandler(), DeltaLakePyArrowTypeHandler()]
+
+
 class S3ClientResource(dg.ConfigurableResource):
     endpoint_url: str
     bucket: str
@@ -71,20 +108,20 @@ defs = Definitions(
             endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
             extension=".db",
         ),
-        "deltalake_io_manager": DeltaLakePolarsIOManager(
+        "deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
             root_uri=f"s3://{_deltalake_bucket}/gadgetbridge/",
             storage_options=_s3_config,
             # no schema — key_prefix on each asset drives the subfolder
         ),
-        "owntracks_deltalake_io_manager": DeltaLakePolarsIOManager(
+        "owntracks_deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
             root_uri=f"s3://{_deltalake_bucket}/owntracks/",
             storage_options=_s3_config,
         ),
-        "poi_deltalake_io_manager": DeltaLakePolarsIOManager(
+        "poi_deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
             root_uri=f"s3://{_deltalake_bucket}/poi/",
             storage_options=_s3_config,
         ),
-        "medicine_deltalake_io_manager": DeltaLakePolarsIOManager(
+        "medicine_deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
             root_uri=f"s3://{_deltalake_bucket}/medicine/",
             storage_options=_s3_config,
         ),
