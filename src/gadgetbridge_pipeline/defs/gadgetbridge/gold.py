@@ -6,8 +6,6 @@ import polars as pl
 from dagster import AssetCheckResult, AutomationCondition, Definitions
 from pandera.typing.polars import Series
 
-from gadgetbridge_pipeline.defs.resources import SYNC_DELTA_DESCRIPTION
-
 
 def _is_weekend(date_col: str) -> pl.Expr:
     """True for Saturday/Sunday. ISO weekday: Monday=1 .. Sunday=7."""
@@ -206,7 +204,6 @@ def heart_rate_distribution_by_medication_and_weekday(
         ),
     },
     automation_condition=AutomationCondition.eager(),
-    metadata={SYNC_DELTA_DESCRIPTION: True},
     description=(
         "Nightly sleep start/end times normalized onto a common date "
         "for weekday vs weekend overlay charting"
@@ -243,7 +240,6 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
         ),
     },
     automation_condition=AutomationCondition.eager(),
-    metadata={SYNC_DELTA_DESCRIPTION: True},
     description=(
         "Daily sleep score statistics (mean, max, session count), "
         "with a 7-day rolling average"

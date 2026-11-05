@@ -49,11 +49,6 @@ class FileS3IOManager(dg.ConfigurableIOManager):
         return local_path
 
 
-# Asset metadata flag: copy the asset's description onto its Delta table, so
-# readers outside Dagster (e.g. the marimo notebooks) can see it.
-SYNC_DELTA_DESCRIPTION = "sync_delta_description"
-
-
 def sync_table_description(dt: DeltaTable, description: str | None) -> bool:
     """Set the table's Delta-level description, returning whether it changed.
 
@@ -69,15 +64,15 @@ def sync_table_description(dt: DeltaTable, description: str | None) -> bool:
 class DescribedDeltaLakePolarsTypeHandler(DeltaLakePolarsTypeHandler):
     def handle_output(self, context: OutputContext, table_slice, obj, connection: TableConnection):
         super().handle_output(context, table_slice, obj, connection)
-        if not context.definition_metadata.get(SYNC_DELTA_DESCRIPTION):
-            return
         dt = DeltaTable(connection.table_uri, storage_options=connection.storage_options)
         if sync_table_description(dt, context.asset_spec.description):
             context.log.info(f"Updated Delta table description on {connection.table_uri}")
 
 
 class DescribedDeltaLakePolarsIOManager(DeltaLakePolarsIOManager):
-    """DeltaLakePolarsIOManager that also honours SYNC_DELTA_DESCRIPTION."""
+    """DeltaLakePolarsIOManager that also copies each asset's description onto
+    its Delta table, so readers outside Dagster (e.g. the marimo notebooks) see it.
+    """
 
     @staticmethod
     def type_handlers():

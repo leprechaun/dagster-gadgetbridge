@@ -4,7 +4,6 @@ from dagster_deltalake import LocalConfig
 from deltalake import DeltaTable, write_deltalake
 
 from gadgetbridge_pipeline.defs.resources import (
-    SYNC_DELTA_DESCRIPTION,
     DescribedDeltaLakePolarsIOManager,
     sync_table_description,
 )
@@ -37,29 +36,26 @@ def test_sync_table_description_ignores_missing_description(tmp_path):
     assert DeltaTable(str(tmp_path)).version() == 0
 
 
-# DescribedDeltaLakePolarsIOManager — only assets flagged with
-# SYNC_DELTA_DESCRIPTION get their description copied onto the table.
+# DescribedDeltaLakePolarsIOManager — copies each asset's description onto its
+# Delta table; assets without one are left alone.
 
-def test_io_manager_syncs_description_only_for_flagged_assets(tmp_path):
-    @dg.asset(
-        key_prefix=["demo"],
-        description="flagged table",
-        metadata={SYNC_DELTA_DESCRIPTION: True},
-    )
-    def flagged() -> pl.DataFrame:
+def test_io_manager_syncs_asset_descriptions(tmp_path):
+    @dg.asset(key_prefix=["demo"], description="described table")
+    def described() -> pl.DataFrame:
         return pl.DataFrame({"a": [1]})
 
-    @dg.asset(key_prefix=["demo"], description="unflagged table")
-    def unflagged() -> pl.DataFrame:
+    @dg.asset(key_prefix=["demo"])
+    def undescribed() -> pl.DataFrame:
         return pl.DataFrame({"a": [1]})
 
     result = dg.materialize(
-        [flagged, unflagged],
+        [described, undescribed],
         resources={"io_manager": DescribedDeltaLakePolarsIOManager(
             root_uri=str(tmp_path), storage_options=LocalConfig()
         )},
     )
 
     assert result.success
-    assert DeltaTable(str(tmp_path / "demo" / "flagged")).metadata().description == "flagged table"
-    assert DeltaTable(str(tmp_path / "demo" / "unflagged")).metadata().description is None
+    described_dt = DeltaTable(str(tmp_path / "demo" / "described"))
+    assert described_dt.metadata().description == "described table"
+    assert DeltaTable(str(tmp_path / "demo" / "undescribed")).metadata().description is None
