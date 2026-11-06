@@ -15,7 +15,7 @@ from dagster import (
     Definitions,
 )
 
-from gadgetbridge_pipeline.defs.resources import S3ClientResource
+from gadgetbridge_pipeline.defs.resources import S3ClientResource, column
 
 _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PRESCRIPTIONS_KEY = "medicine/raw/prescriptions.csv"
@@ -84,6 +84,12 @@ def _read_s3_csv(s3: S3ClientResource, key: str, **read_csv_kwargs) -> pl.DataFr
     name="prescriptions",
     io_manager_key="medicine_deltalake_io_manager",
     description="Prescriptions CSV mirrored from S3, versioned in Delta Lake.",
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("start_date", "First day of the prescription, inclusive"),
+        column("end_date", "Last day of the prescription, inclusive; null = ongoing"),
+        column("medicine", "Lower-case medicine name"),
+        column("dosage_mg", "Daily dose", unit="mg"),
+    ])},
 )
 def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
     return _read_s3_csv(s3, _PRESCRIPTIONS_KEY, schema_overrides={"dosage_mg": pl.Float64})
@@ -93,6 +99,9 @@ def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
     name="medicine_skips",
     io_manager_key="medicine_deltalake_io_manager",
     description="Medicine skip records mirrored from S3, versioned in Delta Lake.",
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("date", "Asia/Bangkok day on which every medicine was skipped"),
+    ])},
 )
 def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
     return _read_s3_csv(s3, _SKIPS_KEY)
@@ -101,6 +110,13 @@ def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
 @dg.asset(
     io_manager_key="medicine_deltalake_io_manager",
     description="Daily medication adherence log derived from prescriptions and skip records",
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("date", "Asia/Bangkok day, up to and including today"),
+        column("medicine", "Lower-case medicine name"),
+        column("dosage_mg", "Prescribed daily dose", unit="mg"),
+        column("taken", "False if the date is in medicine_skips"),
+        column("effective_dosage", "dosage_mg if taken, else 0", unit="mg"),
+    ])},
     automation_condition=AutomationCondition.eager(),
 )
 def medicine_log(

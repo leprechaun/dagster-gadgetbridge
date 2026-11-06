@@ -6,7 +6,7 @@ import dagster as dg
 import polars as pl
 from dagster import AssetCheckResult, Definitions
 
-from gadgetbridge_pipeline.defs.resources import S3ClientResource
+from gadgetbridge_pipeline.defs.resources import S3ClientResource, column
 
 _POI_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _POI_KEY = "poi/raw/poi.geojson"
@@ -159,6 +159,20 @@ def find_same_kind_overlaps(rectangles: pl.DataFrame) -> list[tuple[str, str]]:
         "Named points (circles) and axis-aligned rectangles from a hand-curated GeoJSON "
         "file in S3, for matching against location records."
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("name", "Kebab-case identifier; the only identity a POI has"),
+        column("kind", "Tier: point-of-interest, area, region or territory"),
+        column(
+            "geometry_type", "circle (GeoJSON Point) or rectangle (axis-aligned Polygon)",
+        ),
+        column("lat", "Circle centre latitude, WGS84; null for rectangles", unit="degrees"),
+        column("lon", "Circle centre longitude, WGS84; null for rectangles", unit="degrees"),
+        column("radius_m", "Circle radius; null for rectangles", unit="m"),
+        column("lon_min", "Rectangle west edge, inclusive; null for circles", unit="degrees"),
+        column("lon_max", "Rectangle east edge, inclusive; null for circles", unit="degrees"),
+        column("lat_min", "Rectangle south edge, inclusive; null for circles", unit="degrees"),
+        column("lat_max", "Rectangle north edge, inclusive; null for circles", unit="degrees"),
+    ])},
 )
 def points_of_interest(context: dg.AssetExecutionContext, s3: S3ClientResource) -> pl.DataFrame:
     buffer = io.BytesIO()

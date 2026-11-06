@@ -11,8 +11,14 @@ from dagster import (
     Definitions,
 )
 
+from gadgetbridge_pipeline.defs.resources import column
+
 START_OF_DATA_COLLECTION = datetime(2026, 1, 1, tzinfo=timezone.utc)
 TYPE_DS_UTC_US = pl.Datetime(time_unit='us', time_zone='UTC')
+
+_DEVICE_ID = column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial")
+_USER_ID = column("USER_ID", "Gadgetbridge's internal user row id")
+_UTC_OFFSET = column("UTC_OFFSET", "Device timezone offset from UTC at sample time", unit="ms")
 
 
 def apply_bronze_transform(df: pl.DataFrame, epoch_unit) -> pl.DataFrame:
@@ -49,7 +55,24 @@ _TABLES = {
             'SLEEP': pl.Int64,
             'DEEP_SLEEP': pl.Int64,
             'REM_SLEEP': pl.Int64
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "Start of the sampled minute"),
+            _DEVICE_ID,
+            _USER_ID,
+            column(
+                "RAW_INTENSITY", "Device movement-intensity score, 0-254",
+                sentinel="255 = invalid row",
+            ),
+            column(
+                "STEPS", "Steps taken in the minute", unit="steps", sentinel="255 = invalid row",
+            ),
+            column(
+                "RAW_KIND", "Huami activity-type code; 120 = asleep",
+                sentinel="255 = invalid row",
+            ),
+            column("HEART_RATE", "Heart rate", unit="bpm", sentinel="255 = no reading"),
+        ],
     },
     "generic_temperature_sample": {
         "epoch_unit": "ms",
@@ -61,7 +84,16 @@ _TABLES = {
             'TEMPERATURE': pl.Float64,
             'TEMPERATURE_TYPE': pl.Int64,
             'TEMPERATURE_LOCATION': pl.Int64
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "Sample time"),
+            _DEVICE_ID,
+            _USER_ID,
+            column(
+                "TEMPERATURE", "Wrist sensor temperature, not core body temperature",
+                unit="celsius",
+            ),
+        ],
     },
     "huami_sleep_respiratory_rate_sample": {
         "epoch_unit": "ms",
@@ -72,7 +104,14 @@ _TABLES = {
             'USER_ID': pl.Int64,
             'UTC_OFFSET': pl.Int64,
             'RATE': pl.Int64
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "Sample time"),
+            _DEVICE_ID,
+            _USER_ID,
+            _UTC_OFFSET,
+            column("RATE", "Respiratory rate during sleep", unit="breaths_per_minute"),
+        ],
     },
     "generic_hrv_value_sample": {
         "epoch_unit": "ms",
@@ -82,7 +121,13 @@ _TABLES = {
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'VALUE': pl.Int64
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "Sample time"),
+            _DEVICE_ID,
+            _USER_ID,
+            column("VALUE", "Heart-rate variability", unit="ms"),
+        ],
     },
     "huami_stress_sample": {
         "epoch_unit": "ms",
@@ -93,7 +138,13 @@ _TABLES = {
             'USER_ID': pl.Int64,
             'TYPE_NUM': pl.Int64,
             'STRESS': pl.Int64
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "Sample time"),
+            _DEVICE_ID,
+            _USER_ID,
+            column("STRESS", "Zepp stress score derived from HRV, 0-100; not very accurate"),
+        ],
     },
     "huami_spo2_sample": {
         "epoch_unit": "ms",
@@ -104,7 +155,13 @@ _TABLES = {
             'USER_ID': pl.Int64,
             'TYPE_NUM': pl.Int64,
             'SPO2': pl.Int64
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "Sample time"),
+            _DEVICE_ID,
+            _USER_ID,
+            column("SPO2", "Blood oxygen saturation", unit="percent"),
+        ],
     },
     "huami_pai_sample": {
         "epoch_unit": "ms",
@@ -122,7 +179,21 @@ _TABLES = {
             'TIME_HIGH': pl.Int64,
             'PAI_TODAY': pl.Float64,
             'PAI_TOTAL': pl.Float64
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "Snapshot time; there are several snapshots per day"),
+            _DEVICE_ID,
+            _USER_ID,
+            _UTC_OFFSET,
+            column("PAI_LOW", "PAI earned today in the low heart-rate zone", unit="pai"),
+            column("PAI_MODERATE", "PAI earned today in the moderate heart-rate zone", unit="pai"),
+            column("PAI_HIGH", "PAI earned today in the high heart-rate zone", unit="pai"),
+            column("TIME_LOW", "Time spent today in the low heart-rate zone"),
+            column("TIME_MODERATE", "Time spent today in the moderate heart-rate zone"),
+            column("TIME_HIGH", "Time spent today in the high heart-rate zone"),
+            column("PAI_TODAY", "PAI earned today", unit="pai"),
+            column("PAI_TOTAL", "Rolling 7-day PAI total; the target is 100", unit="pai"),
+        ],
     },
     "battery_level": {
         "epoch_unit": "s",
@@ -132,7 +203,13 @@ _TABLES = {
             'DEVICE_ID': pl.Int64,
             'LEVEL': pl.Int64,
             'BATTERY_INDEX': pl.Int64
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "Sample time; recorded when the level changes"),
+            _DEVICE_ID,
+            column("LEVEL", "Battery charge", unit="percent"),
+            column("BATTERY_INDEX", "Which battery, for devices with more than one"),
+        ],
     },
     "huami_sleep_session_sample": {
         "epoch_unit": "ms",
@@ -145,7 +222,16 @@ _TABLES = {
             'DEVICE_ID': pl.Int64,
             'USER_ID': pl.Int64,
             'DATA': pl.Binary
-        })
+        }),
+        "columns": [
+            column("TIMESTAMP", "When the session record was written, around wake-up"),
+            _DEVICE_ID,
+            _USER_ID,
+            column(
+                "DATA",
+                "Raw 594-byte Huami session blob, parsed by SleepSession (sleep_session.py)",
+            ),
+        ],
     },
 }
 
@@ -155,7 +241,8 @@ def _make_asset(table_name: str, settings: dict[str, Any]):
         name=table_name.lower(),
         io_manager_key="deltalake_io_manager",
         automation_condition=AutomationCondition.eager(),
-        description=settings.get('description')
+        description=settings.get('description'),
+        metadata={"dagster/column_schema": dg.TableSchema(columns=settings["columns"])},
     )
     def _asset(context: AssetExecutionContext, gadgetbridge_db_file) -> pl.DataFrame:
         transformed = apply_bronze_transform(

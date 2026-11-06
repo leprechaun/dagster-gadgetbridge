@@ -4,7 +4,8 @@ import dagster as dg
 import polars as pl
 from dagster import AssetCheckResult, AutomationCondition, Definitions
 
-from gadgetbridge_pipeline.defs.owntracks.bronze import owntracks_partitions
+from gadgetbridge_pipeline.defs.owntracks.bronze import LOCATION_COLUMNS, owntracks_partitions
+from gadgetbridge_pipeline.defs.resources import column as table_column
 
 _EARTH_RADIUS_M = 6_371_000
 
@@ -131,12 +132,30 @@ def join_location_poi(location_records: pl.DataFrame, poi: pl.DataFrame) -> pl.D
     return result.drop("_row_idx")
 
 
+_DROPPED_LOCATION_COLUMNS = ("conn", "ssid", "bssid", "vac", "batt", "bs")
+
+
 @dg.asset(
     group_name="owntracks",
     io_manager_key="owntracks_deltalake_io_manager",
     key_prefix=["owntracks", "silver"],
     partitions_def=owntracks_partitions,
-    metadata={"partition_expr": "year_month"},
+    metadata={
+        "partition_expr": "year_month",
+        "dagster/column_schema": dg.TableSchema(columns=[
+            *(c for name, c in LOCATION_COLUMNS.items() if name not in _DROPPED_LOCATION_COLUMNS),
+            table_column(
+                "point_of_interest",
+                "Names of every point-of-interest circle containing the fix; "
+                "empty list = none",
+            ),
+            table_column("area", "Name of the area rectangle containing the fix; null = none"),
+            table_column("region", "Name of the region rectangle containing the fix; null = none"),
+            table_column(
+                "territory", "Name of the territory rectangle containing the fix; null = none",
+            ),
+        ]),
+    },
     ins={
         "location_records": dg.AssetIn(
             key=dg.AssetKey(["owntracks", "bronze", "location_records"])
@@ -152,9 +171,7 @@ def join_location_poi(location_records: pl.DataFrame, poi: pl.DataFrame) -> pl.D
 def location_records_with_poi(
     location_records: pl.DataFrame, poi: pl.DataFrame
 ) -> pl.DataFrame:
-    return join_location_poi(location_records, poi).drop(
-        "conn", "ssid", "bssid", "vac", "batt", "bs"
-    )
+    return join_location_poi(location_records, poi).drop(*_DROPPED_LOCATION_COLUMNS)
 
 
 def build_poi_visit_spans(
@@ -253,6 +270,21 @@ def build_poi_visit_spans(
         "partitioned, since a single visit (e.g. being at 'home') routinely spans month "
         "partition boundaries."
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        LOCATION_COLUMNS["user"],
+        LOCATION_COLUMNS["device"],
+        table_column("point_of_interest", "Name of the visited point-of-interest"),
+        table_column("start", "First fix of the visit"),
+        table_column(
+            "end",
+            "Last fix of the visit; a visit ends at a fix outside the POI or a gap over "
+            f"{int(_POI_VISIT_GAP_THRESHOLD.total_seconds() // 60)} minutes",
+        ),
+        table_column(
+            "duration_minutes", "end - start in whole minutes; 0 for a single-fix visit",
+            unit="minutes",
+        ),
+    ])},
 )
 def poi_visit_spans(location_records_with_poi: pl.DataFrame) -> pl.DataFrame:
     return build_poi_visit_spans(location_records_with_poi, _POI_VISIT_GAP_THRESHOLD)

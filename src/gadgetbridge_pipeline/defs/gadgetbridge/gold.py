@@ -6,6 +6,12 @@ import polars as pl
 from dagster import AssetCheckResult, AutomationCondition, Definitions
 from pandera.typing.polars import Series
 
+from gadgetbridge_pipeline.defs.resources import column
+
+_UTC_DATE = column("date", "UTC calendar date")
+_WEEKDAY = column("weekday", "ISO weekday, 1 = Monday to 7 = Sunday")
+_IS_WEEKEND = column("is_weekend", "Saturday or Sunday")
+
 
 def _is_weekend(date_col: str) -> pl.Expr:
     """True for Saturday/Sunday. ISO weekday: Monday=1 .. Sunday=7."""
@@ -36,6 +42,12 @@ def _normalize_time_of_day(expr: pl.Expr) -> pl.Expr:
     },
     automation_condition=AutomationCondition.eager(),
     description="Daily step totals (UTC date), with weekday and weekend flag",
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        _UTC_DATE,
+        column("STEPS", "Total steps that day", unit="steps"),
+        _WEEKDAY,
+        _IS_WEEKEND,
+    ])},
 )
 def steps_per_day(activity):
     return (
@@ -73,6 +85,30 @@ def steps_per_day(activity):
         "One row per day (UTC date) of average HRV, SpO2, stress and temperature, "
         "plus heart rate min/max/median/p10/p90"
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        _UTC_DATE,
+        column("avg_hrv", "Mean heart-rate variability", unit="ms"),
+        column("avg_spo2", "Mean blood oxygen saturation", unit="percent"),
+        column("avg_stress", "Mean Zepp stress score (0-100)"),
+        column("avg_temperature_c", "Mean wrist sensor temperature", unit="celsius"),
+        column("heart_rate_min", "Minimum heart rate", unit="bpm"),
+        column(
+            "heart_rate_max", "Maximum heart rate; includes the 255 no-reading value",
+            unit="bpm",
+        ),
+        column(
+            "heart_rate_median", "Median heart rate; includes the 255 no-reading value",
+            unit="bpm",
+        ),
+        column(
+            "heart_rate_p10", "10th-percentile heart rate; includes the 255 no-reading value",
+            unit="bpm",
+        ),
+        column(
+            "heart_rate_p90", "90th-percentile heart rate; includes the 255 no-reading value",
+            unit="bpm",
+        ),
+    ])},
 )
 def daily_health_snapshot(
     activity_sample: pl.DataFrame,
@@ -128,6 +164,14 @@ def daily_health_snapshot(
     },
     automation_condition=AutomationCondition.eager(),
     description="Daily step totals joined with average stress score, for correlation analysis",
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("date", "UTC calendar date; only days with both steps and stress data"),
+        column("total_steps", "Total steps that day", unit="steps"),
+        column("avg_stress", "Mean Zepp stress score (0-100)"),
+        column("median_stress", "Median Zepp stress score (0-100)"),
+        _WEEKDAY,
+        _IS_WEEKEND,
+    ])},
 )
 def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFrame:
     daily_steps = (
@@ -170,6 +214,22 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
         "Heart rate distribution normalized within each "
         "(medication_state x weekday/weekend) group"
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("heart_rate", "Lower edge of a 5-bpm bin", unit="bpm"),
+        column(
+            "medication_state",
+            "Medicines taken that day, sorted and joined with ' + '; 'sober' = none taken",
+        ),
+        column("is_weekend", "Saturday or Sunday (UTC date)"),
+        column(
+            "sample_count", "Minutes in the bin across all days in the group", unit="minutes",
+        ),
+        column(
+            "proportion",
+            "sample_count as a fraction of its (medication_state, is_weekend) group; "
+            "sums to 1 per group",
+        ),
+    ])},
 )
 def heart_rate_distribution_by_medication_and_weekday(
     daily_heart_rate_distribution: pl.DataFrame,
@@ -213,6 +273,16 @@ def heart_rate_distribution_by_medication_and_weekday(
         "Nightly sleep start/end times normalized onto a common date "
         "for weekday vs weekend overlay charting"
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("reporting_date", "Asia/Bangkok wake-up day, as YYYY-MM-DD"),
+        column(
+            "start",
+            "Asia/Bangkok wall-clock start on a dummy date: 1900-01-01, or 1899-12-31 if "
+            "after 15:00, so a night plots as one continuous span",
+        ),
+        column("end", "Asia/Bangkok wall-clock end, on the same dummy date scheme as start"),
+        column("is_weekend", "Saturday or Sunday of the reporting_date"),
+    ])},
 )
 def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     TZ = "Asia/Bangkok"
@@ -249,6 +319,18 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
         "Daily sleep score statistics (mean, max, session count), "
         "with a 7-day rolling average"
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("date", "UTC calendar date of the session records"),
+        column("mean_score", "Mean device sleep score of the day's sessions, to 1 decimal"),
+        column("max_score", "Best device sleep score of the day's sessions"),
+        column("session_count", "Sleep sessions that day, naps included"),
+        _IS_WEEKEND,
+        column(
+            "score_7d_ma",
+            "Rolling mean of mean_score over the last 7 rows (not calendar days); "
+            "null for the first 6",
+        ),
+    ])},
 )
 def sleep_score_stats(sleep_sessions: pl.DataFrame) -> pl.DataFrame:
     return (
@@ -290,6 +372,24 @@ _CONSISTENCY_WINDOW_DAYS = 14
         f"Rolling {_CONSISTENCY_WINDOW_DAYS}-day standard deviation of bedtime, wake time, "
         "and sleep score — how regular sleep is, kept separate from how good it is"
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("date", "Sleep reporting_date (Asia/Bangkok) joined with sleep_score_stats date"),
+        column(
+            "sleep_start_stddev_minutes",
+            f"Standard deviation of bedtime over the last {_CONSISTENCY_WINDOW_DAYS} rows",
+            unit="minutes",
+        ),
+        column(
+            "wake_time_stddev_minutes",
+            f"Standard deviation of wake time over the last {_CONSISTENCY_WINDOW_DAYS} rows; "
+            "naps count as wake times",
+            unit="minutes",
+        ),
+        column(
+            "score_stddev",
+            f"Standard deviation of mean_score over the last {_CONSISTENCY_WINDOW_DAYS} rows",
+        ),
+    ])},
 )
 def sleep_consistency(
     daily_sleep_duration: pl.DataFrame,

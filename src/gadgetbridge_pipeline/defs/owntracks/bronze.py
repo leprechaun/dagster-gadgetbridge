@@ -6,7 +6,7 @@ import dagster as dg
 import polars as pl
 from dagster import AssetExecutionContext, Definitions, MonthlyPartitionsDefinition
 
-from gadgetbridge_pipeline.defs.resources import S3ClientResource
+from gadgetbridge_pipeline.defs.resources import S3ClientResource, column
 
 _BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
 _PREFIX = "owntracks/raw/rec/"
@@ -57,6 +57,34 @@ _SCHEMA = pl.Schema({
     "source":     pl.String,
     "m":          pl.Int64,
 })
+
+
+# Shared with owntracks/silver.py, which keeps a subset of these columns.
+LOCATION_COLUMNS = {c.name: c for c in [
+    column("id", "OwnTracks message id (_id): short random hex; absent before 2024"),
+    column("user", "Recorder user, from the S3 key path"),
+    column("device", "Recorder device, from the S3 key path"),
+    column("year_month", "Partition key: first day of the source file's month"),
+    column(
+        "arrived_at",
+        "Timestamp prefix of the .rec line; currently always equal to timestamp",
+    ),
+    column("timestamp", "Time of the location fix (OwnTracks tst)"),
+    column("created_at", "When the phone created the message; can be later than the fix"),
+    column("lat", "Latitude, WGS84", unit="degrees"),
+    column("lon", "Longitude, WGS84", unit="degrees"),
+    column("alt", "Altitude", unit="m"),
+    column("acc", "Horizontal accuracy radius", unit="m"),
+    column("vac", "Vertical accuracy", unit="m"),
+    column("batt", "Phone battery charge", unit="percent"),
+    column("bs", "Phone battery status: 0 unknown, 1 unplugged, 2 charging, 3 full"),
+    column("conn", "Connectivity: w = wifi, m = mobile, o = offline"),
+    column("ssid", "Wi-Fi network name, when on wifi"),
+    column("bssid", "Wi-Fi access point MAC, when on wifi", sentinel="00:00:00:00:00:00 = unknown"),
+    column("tid", "Two-character tracker id shown on the map"),
+    column("source", "Android location provider; absent before 2025"),
+    column("m", "Monitoring mode: -1 quiet, 1 significant, 2 move"),
+]}
 
 
 def parse_rec_lines(lines: list[str], user: str, device: str) -> tuple[list[dict], list[str]]:
@@ -133,7 +161,10 @@ def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
     group_name="owntracks",
     io_manager_key="owntracks_deltalake_io_manager",
     key_prefix=["owntracks", "bronze"],
-    metadata={"partition_expr": "year_month"},
+    metadata={
+        "partition_expr": "year_month",
+        "dagster/column_schema": dg.TableSchema(columns=list(LOCATION_COLUMNS.values())),
+    },
     op_tags={"dagster/concurrency_key": "owntracks_deltalake"},
     description=(
         "Parsed OwnTracks location records, written to Delta Lake "

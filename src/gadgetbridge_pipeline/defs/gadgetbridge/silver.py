@@ -8,6 +8,7 @@ from pandera.engines.polars_engine import DateTime
 from pandera.typing.polars import Series
 
 from gadgetbridge_pipeline.defs.gadgetbridge.sleep_session import SleepSession
+from gadgetbridge_pipeline.defs.resources import column
 
 
 @dg.asset(
@@ -22,6 +23,15 @@ from gadgetbridge_pipeline.defs.gadgetbridge.sleep_session import SleepSession
         "Contiguous sleep periods (activity RAW_KIND 120) in Asia/Bangkok time; "
         "reporting_date is the wake-up day (the next day for periods starting after 18:00)"
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("date", "Asia/Bangkok calendar date the period started"),
+        column(
+            "reporting_date",
+            "Asia/Bangkok wake-up day: the day after `date` if the period starts after 18:00",
+        ),
+        column("start", "First minute of the asleep run"),
+        column("end", "First minute after the run; the last, still-open run is dropped"),
+    ])},
 )
 def sleep_periods_based_on_activity(activity: pl.DataFrame):
     sleep_periods = (
@@ -66,6 +76,15 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
     description=(
         "Nightly sleep duration, start, and wake time, aggregated from individual sleep periods"
     ),
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("reporting_date", "Asia/Bangkok wake-up day"),
+        column("sleep_start", "Earliest sleep-period start for the day"),
+        column("wake_time", "Latest sleep-period end for the day; includes naps"),
+        column(
+            "total_sleep_minutes", "Sum of sleep-period lengths, excluding awake gaps between them",
+            unit="minutes",
+        ),
+    ])},
 )
 def daily_sleep_duration(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     return (
@@ -137,6 +156,27 @@ def _by_minute(df: pl.DataFrame, col: str, alias: str, group_by: list[str]) -> p
     },
     automation_condition=AutomationCondition.eager(),
     description="Wide per-minute join of all bronze health metrics",
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("MINUTE", "The minute (truncated); join key"),
+        column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
+        column("USER_ID", "Gadgetbridge's internal user row id"),
+        column(
+            "RAW_INTENSITY", "Device movement-intensity score, 0-254",
+            sentinel="255 = invalid row",
+        ),
+        column("STEPS", "Steps taken in the minute", unit="steps", sentinel="255 = invalid row"),
+        column("RAW_KIND", "Huami activity-type code; 120 = asleep", sentinel="255 = invalid row"),
+        column("HEART_RATE", "Heart rate; null where the device had no reading", unit="bpm"),
+        column("TEMPERATURE", "Mean wrist sensor temperature in the minute", unit="celsius"),
+        column("HRV", "Mean heart-rate variability in the minute", unit="ms"),
+        column("STRESS", "Mean Zepp stress score (0-100) in the minute"),
+        column("SPO2", "Mean blood oxygen saturation in the minute", unit="percent"),
+        column(
+            "RESPIRATORY_RATE", "Mean respiratory rate in the minute; sleep only",
+            unit="breaths_per_minute",
+        ),
+        column("BATTERY_LEVEL", "Mean battery charge in the minute; sparse", unit="percent"),
+    ])},
 )
 def per_minute_health_metrics(
     activity: pl.DataFrame,
@@ -188,6 +228,15 @@ def per_minute_health_metrics(
     },
     automation_condition=AutomationCondition.eager(),
     description="Daily distribution of binned heart rates (5 bpm bins, 40-160 range)",
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("date", "UTC calendar date"),
+        column("heart_rate", "Lower edge of a 5-bpm bin", unit="bpm"),
+        column(
+            "sample_count",
+            "Minutes that day with a heart rate in the bin; no-reading minutes excluded",
+            unit="minutes",
+        ),
+    ])},
 )
 def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     BIN_SIZE = 5
@@ -218,6 +267,27 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     },
     automation_condition=AutomationCondition.eager(),
     description="Sleep session information (start, length, periods, score, etc)",
+    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column(
+            "index", "Row position in huami_sleep_session_sample; not a stable id",
+        ),
+        column("rec", "When the session record was written (bronze TIMESTAMP)"),
+        column(
+            "start",
+            "Session start, in minutes after Asia/Bangkok midnight of the day before the "
+            "session's reference midnight; over 1440 means after midnight",
+            unit="minutes",
+        ),
+        column("end", "Session end, same reference point as start", unit="minutes"),
+        column("stage_count", "Number of sleep-stage periods in the session"),
+        column("score", "Device sleep score"),
+        column("sstart", "Session start"),
+        column("send", "Session end"),
+        column(
+            "length_minutes", "Total time in bed (end - start), including awake stages",
+            unit="minutes",
+        ),
+    ])},
 )
 def sleep_sessions(sleep: pl.DataFrame):
     sessions = []

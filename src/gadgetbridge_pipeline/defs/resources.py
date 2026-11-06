@@ -61,6 +61,14 @@ def sync_table_description(dt: DeltaTable, description: str | None) -> bool:
     return True
 
 
+def column(name: str, description: str | None = None, **tags: str) -> dg.TableColumn:
+    """A `dagster/column_schema` entry carrying only a description and tags
+    (e.g. `unit="bpm"`). The type is left blank on purpose: Delta Lake already
+    records it, and TableColumn's "string" default would be wrong for most columns.
+    """
+    return dg.TableColumn(name, type="", description=description, tags=tags or None)
+
+
 def column_metadata_updates(
     schema: dg.TableSchema | None, current: dict[str, dict[str, str]]
 ) -> dict[str, dict[str, str]]:
