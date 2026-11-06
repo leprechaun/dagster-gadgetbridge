@@ -61,17 +61,60 @@ def sync_table_description(dt: DeltaTable, description: str | None) -> bool:
     return True
 
 
+def column_metadata_updates(
+    schema: dg.TableSchema | None, current: dict[str, dict[str, str]]
+) -> dict[str, dict[str, str]]:
+    """Map each column whose declared metadata isn't already on its Delta field
+    to the metadata to set.
+
+    A column's description is stored under `comment` (the Spark/Unity Catalog
+    convention), alongside its tags verbatim. Keys are only ever added or
+    overwritten, never removed. Raises if the schema declares a column the
+    table doesn't have, since that means the declaration has drifted.
+    """
+    if schema is None:
+        return {}
+    updates = {}
+    for column in schema.columns:
+        if column.name not in current:
+            raise ValueError(
+                f"column_schema declares {column.name!r}, which the table doesn't have"
+            )
+        desired = dict(column.tags or {})
+        if column.description:
+            desired["comment"] = column.description
+        existing = current[column.name]
+        if any(existing.get(k) != v for k, v in desired.items()):
+            updates[column.name] = desired
+    return updates
+
+
+def sync_column_metadata(dt: DeltaTable, schema: dg.TableSchema | None) -> list[str]:
+    """Copy declared column descriptions/tags onto the table's fields,
+    returning the columns that changed. One commit per changed column.
+    """
+    current = {f.name: dict(f.metadata) for f in dt.schema().fields}
+    updates = column_metadata_updates(schema, current)
+    for column, metadata in updates.items():
+        dt.alter.set_column_metadata(column, metadata)
+    return list(updates)
+
+
 class DescribedDeltaLakePolarsTypeHandler(DeltaLakePolarsTypeHandler):
     def handle_output(self, context: OutputContext, table_slice, obj, connection: TableConnection):
         super().handle_output(context, table_slice, obj, connection)
         dt = DeltaTable(connection.table_uri, storage_options=connection.storage_options)
         if sync_table_description(dt, context.asset_spec.description):
             context.log.info(f"Updated Delta table description on {connection.table_uri}")
+        schema = (context.definition_metadata or {}).get("dagster/column_schema")
+        if changed := sync_column_metadata(dt, schema):
+            context.log.info(f"Updated Delta column metadata on {connection.table_uri}: {changed}")
 
 
 class DescribedDeltaLakePolarsIOManager(DeltaLakePolarsIOManager):
-    """DeltaLakePolarsIOManager that also copies each asset's description onto
-    its Delta table, so readers outside Dagster (e.g. the marimo notebooks) see it.
+    """DeltaLakePolarsIOManager that also copies each asset's description, and
+    its `dagster/column_schema` column descriptions/tags, onto its Delta table,
+    so readers outside Dagster (e.g. the marimo notebooks) see them.
     """
 
     @staticmethod

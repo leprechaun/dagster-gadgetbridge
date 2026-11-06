@@ -126,6 +126,7 @@ _TABLES = {
     },
     "battery_level": {
         "epoch_unit": "s",
+        "description": "Device battery level (0-100%) samples, per device and battery",
         "schema": pl.Schema({
             'TIMESTAMP': TYPE_DS_UTC_US,
             'DEVICE_ID': pl.Int64,

@@ -35,6 +35,7 @@ def _normalize_time_of_day(expr: pl.Expr) -> pl.Expr:
         ),
     },
     automation_condition=AutomationCondition.eager(),
+    description="Daily step totals (UTC date), with weekday and weekend flag",
 )
 def steps_per_day(activity):
     return (
@@ -68,6 +69,10 @@ def steps_per_day(activity):
         ),
     },
     automation_condition=AutomationCondition.eager(),
+    description=(
+        "One row per day (UTC date) of average HRV, SpO2, stress and temperature, "
+        "plus heart rate min/max/median/p10/p90"
+    ),
 )
 def daily_health_snapshot(
     activity_sample: pl.DataFrame,

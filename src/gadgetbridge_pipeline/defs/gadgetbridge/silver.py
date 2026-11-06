@@ -18,6 +18,10 @@ from gadgetbridge_pipeline.defs.gadgetbridge.sleep_session import SleepSession
         ),
     },
     automation_condition=AutomationCondition.eager(),
+    description=(
+        "Contiguous sleep periods (activity RAW_KIND 120) in Asia/Bangkok time; "
+        "reporting_date is the wake-up day (the next day for periods starting after 18:00)"
+    ),
 )
 def sleep_periods_based_on_activity(activity: pl.DataFrame):
     sleep_periods = (
