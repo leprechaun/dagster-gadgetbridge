@@ -138,6 +138,7 @@ _DROPPED_LOCATION_COLUMNS = ("conn", "ssid", "bssid", "vac", "batt", "bs")
 @dg.asset(
     group_name="owntracks",
     io_manager_key="owntracks_deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     key_prefix=["owntracks", "silver"],
     partitions_def=owntracks_partitions,
     metadata={
@@ -256,6 +257,7 @@ def build_poi_visit_spans(
 @dg.asset(
     group_name="owntracks",
     io_manager_key="owntracks_deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     key_prefix=["owntracks", "silver"],
     ins={
         "location_records_with_poi": dg.AssetIn(

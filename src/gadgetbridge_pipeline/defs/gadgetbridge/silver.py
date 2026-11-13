@@ -13,6 +13,7 @@ from gadgetbridge_pipeline.defs.resources import column
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "activity": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
@@ -67,6 +68,7 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "sleep_periods": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])
@@ -139,6 +141,7 @@ def _by_minute(df: pl.DataFrame, col: str, alias: str, group_by: list[str]) -> p
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "activity": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
@@ -221,6 +224,7 @@ def per_minute_health_metrics(
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "activity": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
@@ -260,6 +264,7 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "sleep": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "bronze", "huami_sleep_session_sample"])

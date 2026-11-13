@@ -35,6 +35,7 @@ def _normalize_time_of_day(expr: pl.Expr) -> pl.Expr:
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "activity": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
@@ -69,6 +70,7 @@ def steps_per_day(activity):
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "activity_sample": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
@@ -156,6 +158,7 @@ def daily_health_snapshot(
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "activity": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "bronze", "huami_extended_activity_sample"])
@@ -203,6 +206,7 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "daily_heart_rate_distribution": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "silver", "daily_heart_rate_distribution"])
@@ -263,6 +267,7 @@ def heart_rate_distribution_by_medication_and_weekday(
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "sleep_periods": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "silver", "sleep_periods_based_on_activity"])
@@ -309,6 +314,7 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "sleep_sessions": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "silver", "sleep_sessions"])
@@ -357,6 +363,7 @@ _CONSISTENCY_WINDOW_DAYS = 14
 
 @dg.asset(
     io_manager_key="deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     ins={
         "daily_sleep_duration": dg.AssetIn(
             key=dg.AssetKey(["gadgetbridge", "silver", "daily_sleep_duration"])

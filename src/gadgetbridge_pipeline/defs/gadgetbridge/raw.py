@@ -11,6 +11,7 @@ from gadgetbridge_pipeline.defs.resources import S3ClientResource
     key_prefix=["gadgetbridge", "raw"],
     description="SQLite database downloaded from S3. Re-downloaded only when the S3 ETag changes.",
     io_manager_key="sqlite_s3_io_manager",
+    kinds={"s3"},
 )
 def gadgetbridge_db_file(context: dg.AssetExecutionContext, s3: S3ClientResource) -> dg.Output[str]:
     client = s3.get_client()

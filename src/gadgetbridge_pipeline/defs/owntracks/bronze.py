@@ -160,6 +160,7 @@ def _transform(records: list[dict], partition_key: str) -> pl.DataFrame:
     partitions_def=owntracks_partitions,
     group_name="owntracks",
     io_manager_key="owntracks_deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     key_prefix=["owntracks", "bronze"],
     metadata={
         "partition_expr": "year_month",

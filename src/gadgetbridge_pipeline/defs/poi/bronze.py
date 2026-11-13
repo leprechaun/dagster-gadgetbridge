@@ -155,6 +155,7 @@ def find_same_kind_overlaps(rectangles: pl.DataFrame) -> list[tuple[str, str]]:
     group_name="poi",
     key_prefix=["poi", "bronze"],
     io_manager_key="poi_deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     description=(
         "Named points (circles) and axis-aligned rectangles from a hand-curated GeoJSON "
         "file in S3, for matching against location records."

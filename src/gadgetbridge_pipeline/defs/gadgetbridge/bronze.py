@@ -240,6 +240,7 @@ def _make_asset(table_name: str, settings: dict[str, Any]):
     @dg.asset(
         name=table_name.lower(),
         io_manager_key="deltalake_io_manager",
+        kinds={"s3", "deltalake"},
         automation_condition=AutomationCondition.eager(),
         description=settings.get('description'),
         metadata={"dagster/column_schema": dg.TableSchema(columns=settings["columns"])},

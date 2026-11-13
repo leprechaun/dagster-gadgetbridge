@@ -83,6 +83,7 @@ def _read_s3_csv(s3: S3ClientResource, key: str, **read_csv_kwargs) -> pl.DataFr
 @dg.asset(
     name="prescriptions",
     io_manager_key="medicine_deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     description="Prescriptions CSV mirrored from S3, versioned in Delta Lake.",
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column("start_date", "First day of the prescription, inclusive"),
@@ -98,6 +99,7 @@ def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
 @dg.asset(
     name="medicine_skips",
     io_manager_key="medicine_deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     description="Medicine skip records mirrored from S3, versioned in Delta Lake.",
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column("date", "Asia/Bangkok day on which every medicine was skipped"),
@@ -109,6 +111,7 @@ def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
 
 @dg.asset(
     io_manager_key="medicine_deltalake_io_manager",
+    kinds={"s3", "deltalake"},
     description="Daily medication adherence log derived from prescriptions and skip records",
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column("date", "Asia/Bangkok day, up to and including today"),
