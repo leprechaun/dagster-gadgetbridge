@@ -1,7 +1,7 @@
 import dagster as dg
 import polars as pl
 import pytest
-from dagster_deltalake import LocalConfig
+from dagster_delta import LocalConfig
 from deltalake import DeltaTable, write_deltalake
 
 from gadgetbridge_pipeline.defs.resources import (
@@ -15,7 +15,7 @@ from gadgetbridge_pipeline.defs.resources import (
 # committing only when it changes. Runs against a local table in tmp_path.
 
 def _table(tmp_path) -> DeltaTable:
-    write_deltalake(str(tmp_path), pl.DataFrame({"a": [1]}).to_arrow())
+    write_deltalake(str(tmp_path), pl.DataFrame({"a": [1]}))
     return DeltaTable(str(tmp_path))
 
 
@@ -102,7 +102,7 @@ def test_column_metadata_updates_rejects_undeclared_table_column():
 # sync_column_metadata(dt, schema) — writes the diff onto a local table.
 
 def test_sync_column_metadata_sets_and_then_skips(tmp_path):
-    write_deltalake(str(tmp_path), pl.DataFrame({"temp": [36.5]}).to_arrow())
+    write_deltalake(str(tmp_path), pl.DataFrame({"temp": [36.5]}))
     assert sync_column_metadata(DeltaTable(str(tmp_path)), _SCHEMA) == ["temp"]
     field = DeltaTable(str(tmp_path)).schema().fields[0]
     assert dict(field.metadata) == {"unit": "celsius", "comment": "Skin temperature"}

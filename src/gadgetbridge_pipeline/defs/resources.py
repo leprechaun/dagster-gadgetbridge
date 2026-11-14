@@ -5,9 +5,10 @@ import boto3
 import dagster as dg
 from dagster import Definitions, EnvVar, InputContext, OutputContext
 from dagster_apprise import AppriseNotificationsConfig, apprise_notifications
-from dagster_deltalake import DeltaLakePyArrowTypeHandler, S3Config
-from dagster_deltalake.io_manager import TableConnection
-from dagster_deltalake_polars import DeltaLakePolarsIOManager, DeltaLakePolarsTypeHandler
+from dagster_delta import DeltaLakePolarsIOManager, S3Config
+from dagster_delta.io_manager.arrow import _DeltaLakePyArrowTypeHandler
+from dagster_delta.io_manager.base import TableConnection
+from dagster_delta.io_manager.polars import _DeltaLakePolarsTypeHandler
 from dagster_openlineage import openlineage_sensor
 from deltalake import DeltaTable
 
@@ -108,7 +109,7 @@ def sync_column_metadata(dt: DeltaTable, schema: dg.TableSchema | None) -> list[
     return list(updates)
 
 
-class DescribedDeltaLakePolarsTypeHandler(DeltaLakePolarsTypeHandler):
+class DescribedDeltaLakePolarsTypeHandler(_DeltaLakePolarsTypeHandler):
     def handle_output(self, context: OutputContext, table_slice, obj, connection: TableConnection):
         super().handle_output(context, table_slice, obj, connection)
         dt = DeltaTable(connection.table_uri, storage_options=connection.storage_options)
@@ -127,7 +128,7 @@ class DescribedDeltaLakePolarsIOManager(DeltaLakePolarsIOManager):
 
     @staticmethod
     def type_handlers():
-        return [DescribedDeltaLakePolarsTypeHandler(), DeltaLakePyArrowTypeHandler()]
+        return [DescribedDeltaLakePolarsTypeHandler(), _DeltaLakePyArrowTypeHandler()]
 
 
 class S3ClientResource(dg.ConfigurableResource):
@@ -139,7 +140,9 @@ class S3ClientResource(dg.ConfigurableResource):
         return boto3.client("s3", endpoint_url=self.endpoint_url)
 
 
-_s3_config = S3Config(allow_unsafe_rename=True, endpoint=EnvVar("AWS_ENDPOINT_URL_S3"))
+# dagster-delta's S3Config has no allow_unsafe_rename field; deltalake reads it from the env.
+os.environ.setdefault("AWS_S3_ALLOW_UNSAFE_RENAME", "true")
+_s3_config = S3Config(endpoint=EnvVar("AWS_ENDPOINT_URL_S3"))
 
 defs = Definitions(
     sensors=[openlineage_sensor(include_asset_events=True)],
