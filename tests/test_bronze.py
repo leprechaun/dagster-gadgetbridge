@@ -231,3 +231,21 @@ def test_timestamp_check_fails_gracefully_on_missing_column():
     result = check(pl.DataFrame({"OTHER_COL": [1, 2, 3]}))
     assert not result.passed
     assert result.metadata["row_count"].value == 3
+
+
+# _read_table goes through connectorx, which imports pyarrow at call time —
+# a missing pyarrow dependency only shows up when a real SQLite file is read.
+
+def test_read_table_reads_sqlite_file(tmp_path):
+    import sqlite3
+
+    from gadgetbridge_pipeline.defs.gadgetbridge.bronze import _read_table
+
+    db = tmp_path / "x.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE T (a INTEGER)")
+    conn.execute("INSERT INTO T VALUES (1)")
+    conn.commit()
+    conn.close()
+
+    assert _read_table("T", str(db))["a"].to_list() == [1]
