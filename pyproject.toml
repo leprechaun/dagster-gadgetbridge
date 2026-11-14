@@ -5,7 +5,7 @@ version = "0.1.0"
 dependencies = [
     "connectorx>=0.4.5",
     "pyarrow>=18",
-    "dagster==1.13.27",
+    "dagster==1.13.30",
     "dagster-aws>=0.29.8",
     "dagster-delta[polars]>=0.5.9",
     "dagster-k8s>=0.29.8",
