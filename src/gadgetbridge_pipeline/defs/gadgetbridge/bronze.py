@@ -38,6 +38,14 @@ def _read_table(table: str, db_path: str) -> pl.DataFrame:
 
 _TABLES = {
     "huami_extended_activity_sample": {
+        "range": {
+            "name": "huami_extended_activity_sample_heartrate_checks",
+            "column": "HEART_RATE",
+            "checks": {
+                "is_positive": lambda mn, mx: mn > 0,
+                "is_255 or below": lambda mn, mx: mx <= 255,
+            },
+        },
         "epoch_unit": "s",
         "description": (
             "a wide table of per minute metrics including step count, sleep, "
@@ -75,6 +83,15 @@ _TABLES = {
         ],
     },
     "generic_temperature_sample": {
+        "range": {
+            "name": "generic_temperature_sample_temperature_checks",
+            "column": "TEMPERATURE",
+            "checks": {
+                "is_at_least_15": lambda mn, mx: mn >= 15.0,
+                "is_at_most_45": lambda mn, mx: mx <= 45.0,
+            },
+            "cast": float,
+        },
         "epoch_unit": "ms",
         "description": "temperature of the sensor",
         "schema": pl.Schema({
@@ -96,6 +113,14 @@ _TABLES = {
         ],
     },
     "huami_sleep_respiratory_rate_sample": {
+        "range": {
+            "name": "huami_sleep_respiratory_rate_sample_rate_checks",
+            "column": "RATE",
+            "checks": {
+                "is_at_least_4": lambda mn, mx: mn >= 4,
+                "is_at_most_60": lambda mn, mx: mx <= 60,
+            },
+        },
         "epoch_unit": "ms",
         "description": "night time respiratory rate",
         "schema": pl.Schema({
@@ -114,6 +139,14 @@ _TABLES = {
         ],
     },
     "generic_hrv_value_sample": {
+        "range": {
+            "name": "generic_hrv_value_sample_hrv_checks",
+            "column": "VALUE",
+            "checks": {
+                "is_positive": lambda mn, mx: mn > 0,
+                "is_at_most_300": lambda mn, mx: mx <= 300,
+            },
+        },
         "epoch_unit": "ms",
         "description": "Heart rate variability",
         "schema": pl.Schema({
@@ -130,6 +163,14 @@ _TABLES = {
         ],
     },
     "huami_stress_sample": {
+        "range": {
+            "name": "huami_stress_sample_stress_checks",
+            "column": "STRESS",
+            "checks": {
+                "is_at_least_1": lambda mn, mx: mn >= 1,
+                "is_at_most_100": lambda mn, mx: mx <= 100,
+            },
+        },
         "epoch_unit": "ms",
         "description": "A bad nmeasurement of stress, based on HRV. Inaccurate.",
         "schema": pl.Schema({
@@ -147,6 +188,14 @@ _TABLES = {
         ],
     },
     "huami_spo2_sample": {
+        "range": {
+            "name": "huami_spo2_sample_spo2_checks",
+            "column": "SPO2",
+            "checks": {
+                "is_at_least_70": lambda mn, mx: mn >= 70,
+                "is_at_most_100": lambda mn, mx: mx <= 100,
+            },
+        },
         "epoch_unit": "ms",
         "description": "SPO2 samples: more often at night",
         "schema": pl.Schema({
@@ -196,6 +245,14 @@ _TABLES = {
         ],
     },
     "battery_level": {
+        "range": {
+            "name": "battery_level_range_checks",
+            "column": "LEVEL",
+            "checks": {
+                "is_non_negative": lambda mn, mx: mn >= 0,
+                "is_at_most_100": lambda mn, mx: mx <= 100,
+            },
+        },
         "epoch_unit": "s",
         "description": "Device battery level (0-100%) samples, per device and battery",
         "schema": pl.Schema({
@@ -337,16 +394,10 @@ def _make_bronze(table_name: str, settings: dict[str, str]):
 
     checks.append(_make_timestamp_check(table_name))
 
+    if 'range' in settings:
+        checks.append(range_check_for(table_name))
+
     return (_asset, checks)
-
-_tables = []
-_checks = []
-
-
-for (table, settings) in _TABLES.items():
-    t, checks = _make_bronze(table, settings)
-    _tables.append(t)
-    _checks.extend(checks)
 
 
 def _make_range_check(
@@ -403,89 +454,25 @@ def _make_range_check(
     return _check
 
 
-activity_heartrate_checks = _make_range_check(
-    ["gadgetbridge", "bronze", "huami_extended_activity_sample"],
-    "huami_extended_activity_sample_heartrate_checks",
-    "HEART_RATE",
-    {
-        "is_positive": lambda mn, mx: mn > 0,
-        "is_255 or below": lambda mn, mx: mx <= 255,
-    },
-)
-_checks.append(activity_heartrate_checks)
+def range_check_for(table_name: str):
+    """The blocking range check declared by a table's `range` entry in _TABLES."""
+    spec = _TABLES[table_name]["range"]
+    return _make_range_check(
+        ["gadgetbridge", "bronze", table_name],
+        spec["name"],
+        spec["column"],
+        spec["checks"],
+        cast=spec.get("cast", int),
+    )
 
 
-battery_level_checks = _make_range_check(
-    ["gadgetbridge", "bronze", "battery_level"],
-    "battery_level_range_checks",
-    "LEVEL",
-    {
-        "is_non_negative": lambda mn, mx: mn >= 0,
-        "is_at_most_100": lambda mn, mx: mx <= 100,
-    },
-)
-_checks.append(battery_level_checks)
+_tables = []
+_checks = []
 
-
-spo2_checks = _make_range_check(
-    ["gadgetbridge", "bronze", "huami_spo2_sample"],
-    "huami_spo2_sample_spo2_checks",
-    "SPO2",
-    {
-        "is_at_least_70": lambda mn, mx: mn >= 70,
-        "is_at_most_100": lambda mn, mx: mx <= 100,
-    },
-)
-_checks.append(spo2_checks)
-
-
-temperature_checks = _make_range_check(
-    ["gadgetbridge", "bronze", "generic_temperature_sample"],
-    "generic_temperature_sample_temperature_checks",
-    "TEMPERATURE",
-    {
-        "is_at_least_15": lambda mn, mx: mn >= 15.0,
-        "is_at_most_45": lambda mn, mx: mx <= 45.0,
-    },
-    cast=float,
-)
-_checks.append(temperature_checks)
-
-
-stress_checks = _make_range_check(
-    ["gadgetbridge", "bronze", "huami_stress_sample"],
-    "huami_stress_sample_stress_checks",
-    "STRESS",
-    {
-        "is_at_least_1": lambda mn, mx: mn >= 1,
-        "is_at_most_100": lambda mn, mx: mx <= 100,
-    },
-)
-_checks.append(stress_checks)
-
-
-hrv_checks = _make_range_check(
-    ["gadgetbridge", "bronze", "generic_hrv_value_sample"],
-    "generic_hrv_value_sample_hrv_checks",
-    "VALUE",
-    {
-        "is_positive": lambda mn, mx: mn > 0,
-        "is_at_most_300": lambda mn, mx: mx <= 300,
-    },
-)
-_checks.append(hrv_checks)
-
-
-respiratory_rate_checks = _make_range_check(
-    ["gadgetbridge", "bronze", "huami_sleep_respiratory_rate_sample"],
-    "huami_sleep_respiratory_rate_sample_rate_checks",
-    "RATE",
-    {
-        "is_at_least_4": lambda mn, mx: mn >= 4,
-        "is_at_most_60": lambda mn, mx: mx <= 60,
-    },
-)
-_checks.append(respiratory_rate_checks)
+for table, settings in _TABLES.items():
+    asset, checks = _make_bronze(table, settings)
+    _tables.append(asset)
+    _checks.extend(checks)
 
 
 defs = Definitions(

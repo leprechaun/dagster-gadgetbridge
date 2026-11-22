@@ -5,15 +5,17 @@ import pytest
 
 from gadgetbridge_pipeline.defs.gadgetbridge.bronze import (
     _make_timestamp_check,
-    activity_heartrate_checks,
     apply_bronze_transform,
-    battery_level_checks,
-    hrv_checks,
-    respiratory_rate_checks,
-    spo2_checks,
-    stress_checks,
-    temperature_checks,
+    range_check_for,
 )
+
+activity_heartrate_checks = range_check_for("huami_extended_activity_sample")
+battery_level_checks = range_check_for("battery_level")
+spo2_checks = range_check_for("huami_spo2_sample")
+temperature_checks = range_check_for("generic_temperature_sample")
+stress_checks = range_check_for("huami_stress_sample")
+hrv_checks = range_check_for("generic_hrv_value_sample")
+respiratory_rate_checks = range_check_for("huami_sleep_respiratory_rate_sample")
 
 
 def _hr_df(values):
