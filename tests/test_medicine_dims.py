@@ -65,3 +65,13 @@ def test_dim_prescription_key_is_person_medicine_and_valid_from_and_carries_the_
     ]
     assert dim["dosage_mg"].to_list() == [10.0, 20.0]
     assert dim["valid_to"].to_list() == [date(2000, 5, 31), None]
+
+
+def test_a_stale_prescriptions_table_without_person_id_says_to_rematerialize_it():
+    stale = pl.DataFrame({
+        "medicine": ["medicine-a"], "start_date": [date(2000, 1, 1)],
+        "end_date": [None], "dosage_mg": [10.0],
+    })
+
+    with pytest.raises(ValueError, match=r"person_id.*rematerialize"):
+        build_dim_prescription(stale)

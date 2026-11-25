@@ -70,3 +70,10 @@ def test_the_watermark_is_each_persons_latest_complete_through_date_not_their_la
     assert latest_watermarks(checkins).sort("person_key").rows() == [
         ("person-a", date(2000, 1, 8)), ("person-b", date(2000, 1, 2)),
     ]
+
+
+def test_building_from_a_stale_bronze_table_without_person_id_says_to_rematerialize_it():
+    stale_skips = pl.DataFrame({"date": [date(2000, 1, 3)]})
+
+    with pytest.raises(ValueError, match=r"person_id.*rematerialize"):
+        build_fact_skipped_dose(stale_skips)

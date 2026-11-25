@@ -18,6 +18,7 @@ def build_fact_skipped_dose(skips: pl.DataFrame) -> pl.DataFrame:
     """Factless fact: a row's existence is the Skipped Dose. The skips file
     records no medicine or time, so each row means every Medicine, all day.
     """
+    require_person_id(skips, "medicine_skips")
     return skips.select(
         pl.col("date").alias("date_key"),
         pl.col("person_id").alias("person_key"),

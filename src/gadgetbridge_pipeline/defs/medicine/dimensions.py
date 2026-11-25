@@ -11,7 +11,11 @@ def require_person_id(frame: pl.DataFrame, source: str) -> pl.DataFrame:
     filled in by hand and never defaulted in code.
     """
     if "person_id" not in frame.columns:
-        raise ValueError(f"{source} has no person_id column; add it by hand, it is never defaulted")
+        raise ValueError(
+            f"{source} has no person_id column. Add it to the CSV by hand (it is never "
+            "defaulted); if the CSV already has it, this is a table from before the column "
+            "existed, so rematerialize the medicine bronze assets first."
+        )
     return frame
 
 
@@ -44,6 +48,7 @@ def build_dim_prescription(prescriptions: pl.DataFrame) -> pl.DataFrame:
     """A versioned dimension: the prescribed dose is a period attribute, and the
     key is person, medicine and the day the period starts.
     """
+    require_person_id(prescriptions, "prescriptions")
     return prescriptions.select(
         (
             pl.col("person_id") + "/" + pl.col("medicine") + "@"
