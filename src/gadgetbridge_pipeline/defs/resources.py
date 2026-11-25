@@ -170,6 +170,10 @@ defs = Definitions(
             root_uri=f"s3://{_deltalake_bucket}/poi/",
             storage_options=_s3_config,
         ),
+        "conformed_deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
+            root_uri=f"s3://{_deltalake_bucket}/conformed/",
+            storage_options=_s3_config,
+        ),
         "medicine_deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
             root_uri=f"s3://{_deltalake_bucket}/medicine/",
             storage_options=_s3_config,
