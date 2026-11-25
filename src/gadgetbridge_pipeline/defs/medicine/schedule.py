@@ -30,4 +30,22 @@ medicine_log_daily_schedule = dg.ScheduleDefinition(
     default_status=DefaultScheduleStatus.RUNNING,
 )
 
-defs = Definitions(jobs=[medicine_log_job], schedules=[medicine_log_daily_schedule])
+# derived_medicine_day runs up to each Person's own today, so it needs the same daily
+# backstop for the same reason. It is a separate job so medicine_log's stays unchanged.
+medicine_day_job = dg.define_asset_job(
+    name="medicine_day_daily_job",
+    selection=AssetSelection.assets(AssetKey(["medicine", "gold", "derived_medicine_day"])),
+)
+
+medicine_day_daily_schedule = dg.ScheduleDefinition(
+    name="medicine_day_daily_schedule",
+    job=medicine_day_job,
+    cron_schedule="5 0 * * *",
+    execution_timezone="Asia/Bangkok",
+    default_status=DefaultScheduleStatus.RUNNING,
+)
+
+defs = Definitions(
+    jobs=[medicine_log_job, medicine_day_job],
+    schedules=[medicine_log_daily_schedule, medicine_day_daily_schedule],
+)
