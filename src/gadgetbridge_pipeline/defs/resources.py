@@ -131,6 +131,20 @@ class DescribedDeltaLakePolarsIOManager(DeltaLakePolarsIOManager):
         return [DescribedDeltaLakePolarsTypeHandler(), _DeltaLakePyArrowTypeHandler()]
 
 
+def delta_io_manager(root_uri: str, storage_options) -> DescribedDeltaLakePolarsIOManager:
+    """The one way to build a domain's Delta IO manager.
+
+    `schema_mode="merge"` lets a write add columns to an existing table, so a
+    source gaining a column (e.g. `person_id` on the medicine CSVs) evolves the
+    table instead of failing with a schema mismatch. Columns the new frame no
+    longer has are kept (null for new rows), so a *removed* column needs a
+    deliberate table rewrite.
+    """
+    return DescribedDeltaLakePolarsIOManager(
+        root_uri=root_uri, storage_options=storage_options, schema_mode="merge"
+    )
+
+
 class S3ClientResource(dg.ConfigurableResource):
     endpoint_url: str
     bucket: str
@@ -143,6 +157,11 @@ class S3ClientResource(dg.ConfigurableResource):
 # dagster-delta's S3Config has no allow_unsafe_rename field; deltalake reads it from the env.
 os.environ.setdefault("AWS_S3_ALLOW_UNSAFE_RENAME", "true")
 _s3_config = S3Config(endpoint=EnvVar("AWS_ENDPOINT_URL_S3"))
+
+def _domain_io_manager(domain: str) -> DescribedDeltaLakePolarsIOManager:
+    # No schema: each asset's key_prefix drives the subfolder beneath the domain root.
+    return delta_io_manager(f"s3://{_deltalake_bucket}/{domain}/", _s3_config)
+
 
 defs = Definitions(
     sensors=[openlineage_sensor(include_asset_events=True)],
@@ -157,23 +176,11 @@ defs = Definitions(
             endpoint_url=EnvVar("AWS_ENDPOINT_URL_S3"),
             extension=".db",
         ),
-        "deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
-            root_uri=f"s3://{_deltalake_bucket}/gadgetbridge/",
-            storage_options=_s3_config,
-            # no schema — key_prefix on each asset drives the subfolder
-        ),
-        "owntracks_deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
-            root_uri=f"s3://{_deltalake_bucket}/owntracks/",
-            storage_options=_s3_config,
-        ),
-        "poi_deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
-            root_uri=f"s3://{_deltalake_bucket}/poi/",
-            storage_options=_s3_config,
-        ),
-        "medicine_deltalake_io_manager": DescribedDeltaLakePolarsIOManager(
-            root_uri=f"s3://{_deltalake_bucket}/medicine/",
-            storage_options=_s3_config,
-        ),
+        "deltalake_io_manager": _domain_io_manager("gadgetbridge"),
+        "owntracks_deltalake_io_manager": _domain_io_manager("owntracks"),
+        "poi_deltalake_io_manager": _domain_io_manager("poi"),
+        "conformed_deltalake_io_manager": _domain_io_manager("conformed"),
+        "medicine_deltalake_io_manager": _domain_io_manager("medicine"),
     }
 )
 

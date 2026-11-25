@@ -4,17 +4,14 @@ import dagster as dg
 import polars as pl
 from dagster import AssetCheckResult, AutomationCondition, Definitions
 
+from gadgetbridge_pipeline.defs.conformed.constants import VISIT_GAP
 from gadgetbridge_pipeline.defs.owntracks.bronze import LOCATION_COLUMNS, owntracks_partitions
 from gadgetbridge_pipeline.defs.resources import column as table_column
 
 _EARTH_RADIUS_M = 6_371_000
 
-# How long a gap between pings can be before a visit to the same POI is
-# considered to have ended rather than just under-sampled. OwnTracks pings
-# on movement plus a periodic heartbeat, so a gap past this is treated as
-# "tracking paused" rather than "still there" — tune to your device's
-# actual reporting interval.
-_POI_VISIT_GAP_THRESHOLD = timedelta(minutes=30)
+# Visit gap threshold: see conformed/constants.py (VISIT_GAP).
+_POI_VISIT_GAP_THRESHOLD = VISIT_GAP
 
 _POI_VISIT_SPAN_SCHEMA = pl.Schema({
     "user": pl.String,

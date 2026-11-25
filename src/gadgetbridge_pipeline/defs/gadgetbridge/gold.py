@@ -6,6 +6,7 @@ import polars as pl
 from dagster import AssetCheckResult, AutomationCondition, Definitions
 from pandera.typing.polars import Series
 
+from gadgetbridge_pipeline.defs.conformed.constants import NIGHT_BOUNDARY
 from gadgetbridge_pipeline.defs.resources import column
 
 _UTC_DATE = column("date", "UTC calendar date")
@@ -19,7 +20,7 @@ def _is_weekend(date_col: str) -> pl.Expr:
 
 
 _COMMON_DATE = datetime.date(1900, 1, 1)
-_CUTOFF = datetime.time(15, 0)
+_CUTOFF = NIGHT_BOUNDARY
 _ONE_DAY = pl.duration(days=1)
 
 
