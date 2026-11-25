@@ -23,16 +23,18 @@ def find_unresolved_keys(fact: pl.DataFrame, key_col: str, dim: pl.DataFrame) ->
     return sorted(unresolved, key=lambda k: (k is not None, str(k)))
 
 
-def find_person_device_mismatches(fact: pl.DataFrame, dim_device: pl.DataFrame) -> list[tuple]:
-    """(device_key, person_key) pairs on the fact that disagree with the
-    Device's owner in `dim_device`. Devices missing from the dimension are
-    left to the key-resolution check.
+def find_person_device_mismatches(
+    fact: pl.DataFrame, dim: pl.DataFrame, key_col: str = "device_key"
+) -> list[tuple]:
+    """(owner key, person_key) pairs on the fact that disagree with the owner in
+    `dim`, matched on `key_col` (`device_key` or `phone_key`). Keys missing from
+    the dimension are left to the key-resolution check.
     """
-    owner = dim_device.select("device_key", pl.col("person_key").alias("_owner"))
+    owner = dim.select(key_col, pl.col("person_key").alias("_owner"))
     bad = (
-        fact.select("device_key", "person_key").unique()
-        .join(owner, on="device_key", how="inner")
+        fact.select(key_col, "person_key").unique()
+        .join(owner, on=key_col, how="inner")
         .filter(pl.col("person_key") != pl.col("_owner"))
-        .sort("device_key", "person_key")
+        .sort(key_col, "person_key")
     )
     return [(r[0], r[1]) for r in bad.iter_rows()]

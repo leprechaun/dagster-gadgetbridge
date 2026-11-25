@@ -38,3 +38,10 @@ def test_a_row_whose_person_differs_from_its_devices_owner_is_reported():
     dim = pl.DataFrame({"device_key": ["d1", "d2"], "person_key": ["person-a", "person-b"]})
 
     assert find_person_device_mismatches(fact, dim) == [("d1", "person-b")]
+
+
+def test_person_agreement_can_check_phones_by_naming_the_key_column():
+    fact = pl.DataFrame({"phone_key": ["p1", "p1"], "person_key": ["person-a", "person-b"]})
+    dim = pl.DataFrame({"phone_key": ["p1"], "person_key": ["person-a"]})
+
+    assert find_person_device_mismatches(fact, dim, key_col="phone_key") == [("p1", "person-b")]
