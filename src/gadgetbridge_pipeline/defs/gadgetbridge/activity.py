@@ -3,6 +3,7 @@ from __future__ import annotations
 import dagster as dg
 import polars as pl
 
+from gadgetbridge_pipeline.defs.conformed.devices import resolve_device
 from gadgetbridge_pipeline.defs.conformed.fact_checks import (
     find_duplicate_grain,
     find_person_device_mismatches,
@@ -37,35 +38,14 @@ def build_fact_activity_minute(
     bronze: pl.DataFrame, dim_device: pl.DataFrame, person_timezone: pl.DataFrame
 ) -> pl.DataFrame:
     """One row per Device and minute, from `huami_extended_activity_sample`."""
-    devices = dim_device.select(
-        pl.col("gadgetbridge_device_id").cast(pl.Int64).alias("DEVICE_ID"),
-        "device_key", "person_key", "valid_from", "valid_to",
-    )
-    indexed = bronze.with_row_index("_row").with_columns(
-        pl.col("TIMESTAMP").dt.date().alias("_utc_date")
-    )
-    in_period = (
-        indexed.join(devices, on="DEVICE_ID", how="inner")
-        .filter(
-            (pl.col("_utc_date") >= pl.col("valid_from"))
-            & (pl.col("valid_to").is_null() | (pl.col("_utc_date") <= pl.col("valid_to")))
-        )
-    )
-    no_device = indexed.join(in_period.select("_row"), on="_row", how="anti").with_columns(
-        pl.lit(UNKNOWN_KEY).alias("device_key"), pl.lit(UNKNOWN_KEY).alias("person_key")
-    )
-    joined = (
-        pl.concat([in_period.select(no_device.columns), no_device])
-        .sort("_row")
-        .select(
-            pl.col("TIMESTAMP").alias("timestamp_utc"),
-            "device_key", "person_key",
-            pl.col("RAW_KIND").alias("activity_kind_key"),
-            pl.when(~_invalid_row()).then(pl.col("STEPS")).alias("steps"),
-            pl.when((pl.col("HEART_RATE") != HEART_RATE_NO_READING) & ~_invalid_row())
-            .then(pl.col("HEART_RATE")).alias("heart_rate_bpm"),
-            pl.when(~_invalid_row()).then(pl.col("RAW_INTENSITY")).alias("raw_intensity"),
-        )
+    joined = resolve_device(bronze, "DEVICE_ID", "TIMESTAMP", dim_device).select(
+        pl.col("TIMESTAMP").alias("timestamp_utc"),
+        "device_key", "person_key",
+        pl.col("RAW_KIND").alias("activity_kind_key"),
+        pl.when(~_invalid_row()).then(pl.col("STEPS")).alias("steps"),
+        pl.when((pl.col("HEART_RATE") != HEART_RATE_NO_READING) & ~_invalid_row())
+        .then(pl.col("HEART_RATE")).alias("heart_rate_bpm"),
+        pl.when(~_invalid_row()).then(pl.col("RAW_INTENSITY")).alias("raw_intensity"),
     )
     return with_local_keys(joined, "timestamp_utc", person_timezone).select(
         "date_key", "time_key", "device_key", "person_key", "activity_kind_key",
