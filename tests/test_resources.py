@@ -7,6 +7,7 @@ from deltalake import DeltaTable, write_deltalake
 from gadgetbridge_pipeline.defs.resources import (
     DescribedDeltaLakePolarsIOManager,
     column_metadata_updates,
+    delta_io_manager,
     sync_column_metadata,
     sync_table_description,
 )
@@ -131,3 +132,27 @@ def test_column_metadata_survives_partition_overwrite(tmp_path):
     assert dict(temp.metadata) == {"unit": "celsius", "comment": "Skin temperature"}
     # metadata written once, then preserved by later partition writes
     assert [h["operation"] for h in dt.history()].count("UPDATE FIELD METADATA") == 1
+
+
+# delta_io_manager — the shared constructor merges schemas, so a source gaining a
+# column (like person_id on the medicine CSVs) does not fail against its old table.
+
+def _asset_with_columns(columns):
+    @dg.asset(name="evolving", key_prefix=["demo"], io_manager_key="io_manager")
+    def evolving() -> pl.DataFrame:
+        return pl.DataFrame({name: [1] for name in columns})
+
+    return evolving
+
+
+def test_an_asset_gaining_a_column_is_written_over_its_older_table(tmp_path):
+    resources = {"io_manager": delta_io_manager(str(tmp_path), LocalConfig())}
+    old = _asset_with_columns(["a", "b", "c", "d"])
+    new = _asset_with_columns(["a", "b", "c", "d", "person_id"])
+
+    assert dg.materialize([old], resources=resources).success
+    assert dg.materialize([new], resources=resources).success
+
+    table = pl.read_delta(str(tmp_path / "demo" / "evolving"))
+    assert table.columns == ["a", "b", "c", "d", "person_id"]
+    assert table["person_id"].to_list() == [1]
