@@ -20,22 +20,32 @@ def build_fact_location_fix(
     """One row per Fix: observations only, because this fact is monthly-partitioned.
 
     The key is a stable hash of phone and timestamp; the record `id` is absent
-    in older data so it can't be the key.
+    in older data so it can't be the key. A Fix is one position at an instant, so
+    records sharing a phone and a second (resends, or several location providers)
+    collapse to the most accurate one, then the latest created, then by `id`.
     """
-    with_phone = location_records.with_columns(
+    one_per_instant = location_records.sort(
+        ["user", "device", "timestamp", "acc", "created_at", "id"],
+        descending=[False, False, False, False, True, False],
+        nulls_last=True,
+    ).unique(subset=["user", "device", "timestamp"], keep="first", maintain_order=True)
+    with_phone = one_per_instant.with_columns(
         (pl.col("user") + "/" + pl.col("device")).alias("_phone")
     )
     resolved = resolve_phone(with_phone, "_phone", "timestamp", dim_phone).select(
-        "phone_key", "person_key",
+        "_phone", "phone_key", "person_key",
         pl.col("timestamp").alias("timestamp_utc"),
         "lat", "lon",
         pl.col("acc").alias("accuracy_m"),
         "year_month",
     )
     keyed = with_local_keys(resolved, "timestamp_utc", person_timezone)
+    # Hash the raw `user/device`, not the resolved phone_key: two different unlisted
+    # phones are both `(unknown)` there and would collide. For a listed phone the
+    # two are identical, so its keys are unchanged.
     fix_keys = [
         stable_hash64(phone, ts.isoformat())
-        for phone, ts in zip(keyed["phone_key"], keyed["timestamp_utc"], strict=True)
+        for phone, ts in zip(keyed["_phone"], keyed["timestamp_utc"], strict=True)
     ]
     return keyed.with_columns(pl.Series("fix_key", fix_keys, dtype=pl.Int64)).select(
         "fix_key", "date_key", "time_key", "phone_key", "person_key",
@@ -80,7 +90,14 @@ def fact_location_fix(
     dim_person: pl.DataFrame,
 ):
     fact = build_fact_location_fix(location_records, dim_phone, person_timezone)
-    yield dg.Output(fact)
+    yield dg.Output(
+        fact,
+        metadata={
+            "records_in": location_records.height,
+            "fixes_out": fact.height,
+            "duplicates_collapsed": location_records.height - fact.height,
+        },
+    )
 
     dupes = find_duplicate_grain(fact, ["fix_key"])
     yield dg.AssetCheckResult(

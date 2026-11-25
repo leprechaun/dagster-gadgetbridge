@@ -23,15 +23,16 @@ _TZ = pl.DataFrame(
 
 
 def _records(*rows):
-    """rows: (user, device, timestamp, lat, lon, acc)"""
+    """rows: (user, device, timestamp, lat, lon, acc[, created_at_minute, id])"""
+    def row(u, d, ts, lat, lon, acc, created=0, rid=None):
+        return {"id": rid, "user": u, "device": d, "year_month": date(2000, 1, 1),
+                "timestamp": ts, "created_at": datetime(2000, 1, 1, 0, created, tzinfo=_UTC),
+                "lat": lat, "lon": lon, "acc": acc, "alt": 1}
     return pl.DataFrame(
-        [
-            {"id": None, "user": u, "device": d, "year_month": date(2000, 1, 1),
-             "timestamp": ts, "lat": lat, "lon": lon, "acc": acc, "alt": 1}
-            for u, d, ts, lat, lon, acc in rows
-        ],
+        [row(*r) for r in rows],
         schema={"id": pl.String, "user": pl.String, "device": pl.String,
                 "year_month": pl.Date, "timestamp": pl.Datetime("us", "UTC"),
+                "created_at": pl.Datetime("us", "UTC"),
                 "lat": pl.Float64, "lon": pl.Float64, "acc": pl.Int64, "alt": pl.Int64},
     )
 
@@ -61,6 +62,7 @@ def test_a_record_from_an_unlisted_phone_or_outside_its_period_is_kept_with_unkn
 
     fact = build_fact_location_fix(records, _PHONES, _TZ)
 
+    fact = fact.sort("phone_key", "timestamp_utc")
     assert fact["phone_key"].to_list() == ["(unknown)", "(unknown)", "user-a/phone-a"]
     assert fact["person_key"].to_list() == ["(unknown)", "(unknown)", "person-a"]
     assert fact["date_key"].to_list()[:2] == [None, None]
@@ -74,3 +76,38 @@ def test_an_empty_month_gives_an_empty_fact_with_the_fact_columns():
         "fix_key", "date_key", "time_key", "phone_key", "person_key",
         "timestamp_utc", "lat", "lon", "accuracy_m", "year_month",
     ]
+
+
+def test_two_unlisted_phones_at_the_same_instant_get_different_keys_not_a_collision():
+    ts = datetime(2000, 1, 1, 18, 30, tzinfo=_UTC)
+    records = _records(
+        ("user-x", "phone-x", ts, 0.0, 0.0, 5), ("user-y", "phone-y", ts, 0.0, 0.0, 5)
+    )
+
+    fact = build_fact_location_fix(records, _PHONES, _TZ)
+
+    assert fact["fix_key"].n_unique() == 2
+    assert fact["phone_key"].to_list() == ["(unknown)", "(unknown)"]
+
+
+def test_a_resent_record_collapses_to_one_fix():
+    ts = datetime(2000, 1, 1, 18, 30, tzinfo=_UTC)
+    same = ("user-a", "phone-a", ts, 0.5, 0.25, 12)
+
+    fact = build_fact_location_fix(_records(same, same), _PHONES, _TZ)
+
+    assert fact.height == 1
+
+
+def test_two_records_in_the_same_second_keep_the_most_accurate_then_the_latest_created():
+    ts = datetime(2000, 1, 1, 18, 30, tzinfo=_UTC)
+    records = _records(
+        ("user-a", "phone-a", ts, 1.0, 1.0, 50, 0, "a"),   # coarse
+        ("user-a", "phone-a", ts, 2.0, 2.0, 10, 1, "b"),   # most accurate, created earlier
+        ("user-a", "phone-a", ts, 3.0, 3.0, 10, 5, "c"),   # equally accurate, created later: wins
+    )
+
+    fact = build_fact_location_fix(records, _PHONES, _TZ)
+
+    assert fact["lat"].to_list() == [3.0]
+    assert fact["accuracy_m"].to_list() == [10]
