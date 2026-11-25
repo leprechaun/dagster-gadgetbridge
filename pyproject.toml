@@ -25,6 +25,7 @@ dev = [
     "ruff>=0.15.18",
     "marimo>=0.23.14",
     "altair>=6.2.2",
+    "mutmut>=3.8.1",
 ]
 
 [build-system]
@@ -36,6 +37,38 @@ force-include = { "pyproject.toml" = "pyproject.toml" }
 
 [tool.pytest.ini_options]
 addopts = "--cov=gadgetbridge_pipeline --cov-report=term-missing"
+
+[tool.mutmut]
+# Mutation testing: `uv run mutmut run`, then `uv run mutmut browse` / `mutmut results`.
+# Only modules with real logic are mutated; the Dagster wiring (resources, sensors,
+# raw.py) mutates into noise.
+source_paths = [
+    "src/gadgetbridge_pipeline/defs/s3_watch.py",
+    "src/gadgetbridge_pipeline/defs/gadgetbridge/bronze.py",
+    "src/gadgetbridge_pipeline/defs/gadgetbridge/silver.py",
+    "src/gadgetbridge_pipeline/defs/gadgetbridge/gold.py",
+    "src/gadgetbridge_pipeline/defs/gadgetbridge/sleep_session.py",
+    "src/gadgetbridge_pipeline/defs/owntracks/bronze.py",
+    "src/gadgetbridge_pipeline/defs/owntracks/silver.py",
+    "src/gadgetbridge_pipeline/defs/poi/bronze.py",
+    "src/gadgetbridge_pipeline/defs/medicine/bronze.py",
+]
+pytest_add_cli_args_test_selection = ["tests/"]
+# the rest of the package, so unmutated imports (resources.py etc.) resolve
+also_copy = ["src/gadgetbridge_pipeline"]
+# polars runs its own thread pool and is not fork-safe: forking after it has been
+# used can hang or crash a worker (and each crash dumped a ~500MB core file).
+# "forkserver" forks workers from a clean server process, and warmup "none" stops
+# that server importing the test modules (and so polars) before it forks.
+process_isolation = "forkserver"
+forkserver_warmup = "none"
+# With warmup "none" every worker cold-starts pytest, dagster and polars (~8s). The
+# default per-mutant wall limit is (est_test_time + 1) * 15 = ~16s, so under any load
+# fast mutants were misreported as timeouts, hiding real survivors. This raises it to
+# ~60s; genuine infinite loops (e.g. in build_medicine_log) still hit it.
+timeout_constant = 4.0
+# addopts enables coverage, which slows every mutant run for no benefit.
+pytest_add_cli_args = ["--no-cov", "-p", "no:cacheprovider"]
 
 [tool.coverage.run]
 source = ["src/gadgetbridge_pipeline"]

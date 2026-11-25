@@ -209,3 +209,12 @@ __marimo__/
 .dg
 
 data/
+
+# mutmut
+mutants/
+
+# Profiled against real data: statistics must not be published (public repo)
+docs/column-catalog.md
+
+# Cut-over comparison is computed on real data: it must never leave this machine
+docs/cutover-comparison.md

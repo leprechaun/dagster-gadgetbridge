@@ -25,12 +25,12 @@ def _point(name="home", kind="poi", radius_m=None, **extra):
     return {
         "type": "Feature",
         "properties": props,
-        "geometry": {"type": "Point", "coordinates": [2.3522, 48.8566]},
+        "geometry": {"type": "Point", "coordinates": [0.012, 0.034]},
     }
 
 
-def _rectangle(name="bangkok", kind="region", ring=None):
-    ring = ring or [[100.4, 13.6], [100.4, 14.0], [100.8, 14.0], [100.8, 13.6], [100.4, 13.6]]
+def _rectangle(name="example-region", kind="region", ring=None):
+    ring = ring or [[0.4, 0.1], [0.4, 0.5], [0.8, 0.5], [0.8, 0.1], [0.4, 0.1]]
     return {
         "type": "Feature",
         "properties": {"name": name, "kind": kind},
@@ -43,8 +43,8 @@ def test_parse_point_basic():
     assert record["name"] == "home"
     assert record["kind"] == "poi"
     assert record["geometry_type"] == "circle"
-    assert record["lon"] == 2.3522
-    assert record["lat"] == 48.8566
+    assert record["lon"] == 0.012
+    assert record["lat"] == 0.034
     assert record["radius_m"] == 150
     assert record["lon_min"] is None
 
@@ -72,39 +72,39 @@ def test_parse_feature_without_name_is_dropped():
 def test_parse_rectangle_basic():
     record = parse_poi_feature(_rectangle())
     assert record["geometry_type"] == "rectangle"
-    assert record["lon_min"] == 100.4
-    assert record["lon_max"] == 100.8
-    assert record["lat_min"] == 13.6
-    assert record["lat_max"] == 14.0
+    assert record["lon_min"] == 0.4
+    assert record["lon_max"] == 0.8
+    assert record["lat_min"] == 0.1
+    assert record["lat_max"] == 0.5
     assert record["lat"] is None
 
 
 def test_parse_rectangle_rejects_non_axis_aligned_trapezoid():
     # 4 distinct longitudes instead of 2 — a slanted quadrilateral, not a box
     ring = [
-        [-74.228316, 45.918737],
-        [-74.227356, 45.909039],
-        [-74.208851, 45.909039],
-        [-74.208546, 45.918737],
-        [-74.228316, 45.918737],
+        [0.0, 0.0],
+        [0.001, 0.01],
+        [0.02, 0.01],
+        [0.021, 0.0],
+        [0.0, 0.0],
     ]
     assert parse_poi_feature(_rectangle(ring=ring)) is None
 
 
 def test_parse_rectangle_rejects_unclosed_ring():
-    ring = [[100.4, 13.6], [100.4, 14.0], [100.8, 14.0], [100.8, 13.6]]
+    ring = [[0.4, 0.1], [0.4, 0.5], [0.8, 0.5], [0.8, 0.1]]
     assert parse_poi_feature(_rectangle(ring=ring)) is None
 
 
 def test_parse_rectangle_rejects_duplicate_corner():
     # only 3 distinct points — a degenerate triangle-ish ring, not a box
-    ring = [[100.4, 13.6], [100.4, 13.6], [100.8, 14.0], [100.8, 13.6], [100.4, 13.6]]
+    ring = [[0.4, 0.1], [0.4, 0.1], [0.8, 0.5], [0.8, 0.1], [0.4, 0.1]]
     assert parse_poi_feature(_rectangle(ring=ring)) is None
 
 
 def test_parse_polygon_with_holes_is_rejected():
-    outer = [[100.4, 13.6], [100.4, 14.0], [100.8, 14.0], [100.8, 13.6], [100.4, 13.6]]
-    hole = [[100.5, 13.7], [100.5, 13.8], [100.6, 13.8], [100.6, 13.7], [100.5, 13.7]]
+    outer = [[0.4, 0.1], [0.4, 0.5], [0.8, 0.5], [0.8, 0.1], [0.4, 0.1]]
+    hole = [[0.5, 0.2], [0.5, 0.3], [0.6, 0.3], [0.6, 0.2], [0.5, 0.2]]
     feature = {
         "type": "Feature",
         "properties": {"name": "with-hole", "kind": "region"},
@@ -129,10 +129,10 @@ def test_parse_geojson_splits_valid_and_dropped():
     del unnamed["properties"]["name"]
     data = json.dumps({
         "type": "FeatureCollection",
-        "features": [_point(name="home"), _rectangle(name="bangkok"), unnamed],
+        "features": [_point(name="home"), _rectangle(name="example-region"), unnamed],
     }).encode()
     records, dropped = parse_poi_geojson(data)
-    assert {r["name"] for r in records} == {"home", "bangkok"}
+    assert {r["name"] for r in records} == {"home", "example-region"}
     assert dropped == ["<unnamed>"]
 
 
@@ -173,8 +173,8 @@ def test_find_overlaps_same_kind_non_overlapping():
 def test_find_overlaps_different_kind_nesting_is_allowed():
     # an area nested inside a region — expected, not flagged
     df = pl.DataFrame([
-        _rect_row("bangkok", "region", 0.0, 10.0, 0.0, 10.0),
-        _rect_row("benjakitti-park", "area", 4.0, 6.0, 4.0, 6.0),
+        _rect_row("example-region", "region", 0.0, 10.0, 0.0, 10.0),
+        _rect_row("example-park", "area", 4.0, 6.0, 4.0, 6.0),
     ])
     assert find_same_kind_overlaps(df) == []
 
