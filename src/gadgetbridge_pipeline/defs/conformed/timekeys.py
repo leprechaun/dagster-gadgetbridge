@@ -45,6 +45,11 @@ def with_local_keys(
                 (local.dt.hour().cast(pl.Int64) * 60 + local.dt.minute()).alias("time_key"),
             )
         )
+    if not parts:
+        return df.with_columns(
+            pl.lit(None, dtype=pl.Date).alias("date_key"),
+            pl.lit(None, dtype=pl.Int64).alias("time_key"),
+        )
     return (
         pl.concat(parts)
         .sort("_row")

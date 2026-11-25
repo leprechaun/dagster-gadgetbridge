@@ -78,3 +78,12 @@ def test_a_person_with_no_covering_timezone_gets_null_keys():
 
     assert out["date_key"].to_list() == [None]
     assert out["time_key"].to_list() == [None]
+
+
+def test_an_empty_frame_gets_empty_typed_key_columns():
+    out = with_local_keys(_samples(), "ts", _tz(("person-a", "UTC", _EPOCH, None)))
+
+    assert out.height == 0
+    assert out.columns == ["person_key", "ts", "date_key", "time_key"]
+    assert out.schema["date_key"] == pl.Date
+    assert out.schema["time_key"] == pl.Int64
