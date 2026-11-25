@@ -15,6 +15,11 @@ from dagster import (
     Definitions,
 )
 
+from gadgetbridge_pipeline.defs.medicine.dimensions import (
+    find_reserved_medicine_names,
+    find_unknown_person_ids,
+    require_person_id,
+)
 from gadgetbridge_pipeline.defs.resources import S3ClientResource, column
 
 _MEDICINE_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
@@ -86,6 +91,7 @@ def _read_s3_csv(s3: S3ClientResource, key: str, **read_csv_kwargs) -> pl.DataFr
     kinds={"s3", "deltalake"},
     description="Prescriptions CSV mirrored from S3, versioned in Delta Lake.",
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("person_id", "Owner of the prescription; a person_id in persons"),
         column("start_date", "First day of the prescription, inclusive"),
         column("end_date", "Last day of the prescription, inclusive; null = ongoing"),
         column("medicine", "Lower-case medicine name"),
@@ -93,7 +99,8 @@ def _read_s3_csv(s3: S3ClientResource, key: str, **read_csv_kwargs) -> pl.DataFr
     ])},
 )
 def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
-    return _read_s3_csv(s3, _PRESCRIPTIONS_KEY, schema_overrides={"dosage_mg": pl.Float64})
+    frame = _read_s3_csv(s3, _PRESCRIPTIONS_KEY, schema_overrides={"dosage_mg": pl.Float64})
+    return require_person_id(frame, "prescriptions.csv")
 
 
 @dg.asset(
@@ -102,11 +109,12 @@ def prescriptions(s3: S3ClientResource) -> pl.DataFrame:
     kinds={"s3", "deltalake"},
     description="Medicine skip records mirrored from S3, versioned in Delta Lake.",
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("person_id", "Person who skipped; a person_id in persons"),
         column("date", "Asia/Bangkok day on which every medicine was skipped"),
     ])},
 )
 def medicine_skips(s3: S3ClientResource) -> pl.DataFrame:
-    return _read_s3_csv(s3, _SKIPS_KEY)
+    return require_person_id(_read_s3_csv(s3, _SKIPS_KEY), "medicine_skips.csv")
 
 
 @dg.asset(
@@ -194,6 +202,45 @@ def medicine_skips_not_in_future(medicine_skips: pl.DataFrame) -> AssetCheckResu
     )
 
 
+_PERSONS_IN = {"persons": AssetIn(key=AssetKey(["conformed", "bronze", "persons"]))}
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["medicine", "bronze", "prescriptions"]),
+    blocking=True,
+    name="prescriptions_person_known",
+    additional_ins=_PERSONS_IN,
+)
+def prescriptions_person_known(
+    prescriptions: pl.DataFrame, persons: pl.DataFrame
+) -> AssetCheckResult:
+    bad = find_unknown_person_ids(prescriptions, persons)
+    return AssetCheckResult(passed=not bad, metadata={"unknown_person_ids": str(bad)})
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["medicine", "bronze", "medicine_skips"]),
+    blocking=True,
+    name="medicine_skips_person_known",
+    additional_ins=_PERSONS_IN,
+)
+def medicine_skips_person_known(
+    medicine_skips: pl.DataFrame, persons: pl.DataFrame
+) -> AssetCheckResult:
+    bad = find_unknown_person_ids(medicine_skips, persons)
+    return AssetCheckResult(passed=not bad, metadata={"unknown_person_ids": str(bad)})
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["medicine", "bronze", "prescriptions"]),
+    blocking=True,
+    name="prescriptions_medicine_not_reserved",
+)
+def prescriptions_medicine_not_reserved(prescriptions: pl.DataFrame) -> AssetCheckResult:
+    bad = find_reserved_medicine_names(prescriptions)
+    return AssetCheckResult(passed=not bad, metadata={"reserved_names": str(bad)})
+
+
 defs = Definitions(
     assets=dg.load_assets_from_current_module(
         group_name="medicine",
@@ -203,5 +250,8 @@ defs = Definitions(
         medicine_log_dosage_positive,
         medicine_skips_within_prescriptions,
         medicine_skips_not_in_future,
+        prescriptions_person_known,
+        medicine_skips_person_known,
+        prescriptions_medicine_not_reserved,
     ],
 )
