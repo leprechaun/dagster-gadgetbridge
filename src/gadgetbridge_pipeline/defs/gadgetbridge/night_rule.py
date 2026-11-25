@@ -20,6 +20,27 @@ def _with_block_id(sessions: pl.DataFrame) -> pl.DataFrame:
     return ordered.with_columns(new_block.cum_sum().over("person_key").alias("_block"))
 
 
+def night_window_dates(
+    df: pl.DataFrame, start_col: str, end_col: str, person_timezone: pl.DataFrame
+) -> pl.DataFrame:
+    """Add `_window`: the Local Date whose 15:00-to-15:00 Night window contains
+    each row's midpoint, on its Person's own clock.
+    """
+    mid = df.with_columns(
+        (pl.col(start_col) + (pl.col(end_col) - pl.col(start_col)) / 2).alias("_mid")
+    )
+    return (
+        with_local_keys(mid, "_mid", person_timezone)
+        .with_columns(
+            pl.when(pl.col("time_key") >= NIGHT_BOUNDARY_MINUTE)
+            .then(pl.col("date_key") + pl.duration(days=1))
+            .otherwise(pl.col("date_key"))
+            .alias("_window")
+        )
+        .drop("_mid", "date_key", "time_key")
+    )
+
+
 def apply_night_rule(sessions: pl.DataFrame, person_timezone: pl.DataFrame) -> pl.DataFrame:
     """Add `reporting_date_key` and `is_nap` to each session.
 
@@ -28,15 +49,9 @@ def apply_night_rule(sessions: pl.DataFrame, person_timezone: pl.DataFrame) -> p
     blocked = _with_block_id(sessions)
     blocks = blocked.group_by("person_key", "_block").agg(
         pl.col("start_utc").min().alias("_b_start"), pl.col("end_utc").max().alias("_b_end")
-    ).with_columns(
-        (pl.col("_b_start") + (pl.col("_b_end") - pl.col("_b_start")) / 2).alias("_mid")
     )
-    windowed = with_local_keys(blocks, "_mid", person_timezone).select(
-        "person_key", "_block", "_b_start", "_b_end",
-        pl.when(pl.col("time_key") >= NIGHT_BOUNDARY_MINUTE)
-        .then(pl.col("date_key") + pl.duration(days=1))
-        .otherwise(pl.col("date_key"))
-        .alias("_window"),
+    windowed = night_window_dates(blocks, "_b_start", "_b_end", person_timezone).select(
+        "person_key", "_block", "_b_start", "_b_end", "_window"
     )
     end_date = with_local_keys(windowed, "_b_end", person_timezone).select(
         "person_key", "_block", pl.col("date_key").alias("_end_date")

@@ -4,14 +4,23 @@ import dagster as dg
 import polars as pl
 
 from gadgetbridge_pipeline.defs.conformed.fact_checks import find_duplicate_grain
+from gadgetbridge_pipeline.defs.gadgetbridge.inferred_sleep import (
+    build_inferred_nights,
+    find_asleep_stretches,
+)
 
 
 def build_derived_night(
     fact_sleep_session: pl.DataFrame,
     fact_sleep_stage: pl.DataFrame,
     wear_coverage: pl.DataFrame,
+    inferred: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
-    """One row per Person and reporting date: the Night's Sleep Block."""
+    """One row per Person and covered reporting date: the Night's Sleep Block.
+
+    A date's Night comes from Sleep Sessions if it has any, else from `inferred`
+    (see inferred_sleep.py), else the date gets a `none` row.
+    """
     sessions = fact_sleep_session.filter(~pl.col("is_nap"))
     asleep = (
         fact_sleep_stage.filter(pl.col("sleep_stage_key") != "AWAKE")
@@ -34,6 +43,14 @@ def build_derived_night(
             .alias("time_in_bed_minutes")
         )
     )
+    if inferred is not None:
+        nights = pl.concat([
+            nights,
+            inferred.select(nights.columns).join(
+                nights.select("person_key", "reporting_date_key"),
+                on=["person_key", "reporting_date_key"], how="anti",
+            ),
+        ])
     covered = wear_coverage.filter(pl.col("covered_night_window")).select(
         "person_key", pl.col("date_key").alias("reporting_date_key")
     )
@@ -64,12 +81,15 @@ _NIGHT_KEY = dg.AssetKey([*_GOLD, "derived_night"])
     description=(
         "One Night per Person and reporting date, for every date whose Night window is "
         "covered. Time in bed is the block span; sleep counts non-AWAKE stage minutes; the "
-        "score is the Night's longest session's, never an average."
+        "score is the Night's longest session's, never an average. A date with no Sleep "
+        "Session falls back to Inferred Sleep from activity minutes (null score)."
     ),
     ins={
         "fact_sleep_session": dg.AssetIn(key=[*_GOLD, "fact_sleep_session"]),
         "fact_sleep_stage": dg.AssetIn(key=[*_GOLD, "fact_sleep_stage"]),
         "derived_wear_coverage": dg.AssetIn(key=[*_GOLD, "derived_wear_coverage"]),
+        "fact_activity_minute": dg.AssetIn(key=[*_GOLD, "fact_activity_minute"]),
+        "person_timezone": dg.AssetIn(key=["conformed", "gold", "person_timezone"]),
     },
     automation_condition=dg.AutomationCondition.eager(),
 )
@@ -77,8 +97,15 @@ def derived_night(
     fact_sleep_session: pl.DataFrame,
     fact_sleep_stage: pl.DataFrame,
     derived_wear_coverage: pl.DataFrame,
+    fact_activity_minute: pl.DataFrame,
+    person_timezone: pl.DataFrame,
 ) -> pl.DataFrame:
-    return build_derived_night(fact_sleep_session, fact_sleep_stage, derived_wear_coverage)
+    inferred = build_inferred_nights(
+        find_asleep_stretches(fact_activity_minute), fact_sleep_session, person_timezone
+    )
+    return build_derived_night(
+        fact_sleep_session, fact_sleep_stage, derived_wear_coverage, inferred
+    )
 
 
 @dg.asset_check(asset=_NIGHT_KEY, blocking=True, name="derived_night_grain_unique")

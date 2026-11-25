@@ -124,3 +124,36 @@ def test_naps_do_not_count_toward_the_night():
     assert (out["session_count"], out["total_sleep_minutes"], out["time_in_bed_minutes"]) == (
         1, 400, 540,
     )
+
+
+def _inferred(person, d, minutes):
+    return pl.DataFrame(
+        [(person, d, "inferred", _dt(d.day - 1, 23), _dt(d.day, 6), 420, minutes, None, 0)],
+        schema={
+            "person_key": pl.String, "reporting_date_key": pl.Date, "source": pl.String,
+            "bedtime_utc": pl.Datetime("us", "UTC"), "wake_utc": pl.Datetime("us", "UTC"),
+            "time_in_bed_minutes": pl.Int64, "total_sleep_minutes": pl.Int64,
+            "score": pl.Int64, "session_count": pl.Int64,
+        },
+        orient="row",
+    )
+
+
+def test_a_covered_date_takes_its_session_night_then_an_inferred_one_then_none():
+    d3, d4, d5 = date(2000, 1, 3), date(2000, 1, 4), date(2000, 1, 5)
+    sessions = _sessions((1, "person-a", _D2, False, _dt(1, 22), _dt(2, 7), 80))
+    coverage = _coverage(
+        ("person-a", _D2, True), ("person-a", d3, True), ("person-a", d4, True),
+        ("person-a", d5, False),
+    )
+    inferred = pl.concat([
+        _inferred("person-a", _D2, 300),   # ignored: the session wins
+        _inferred("person-a", d3, 400),
+        _inferred("person-a", d5, 410),    # ignored: not covered
+    ])
+
+    out = build_derived_night(sessions, _stages(), coverage, inferred).sort("reporting_date_key")
+
+    assert out.select("reporting_date_key", "source", "total_sleep_minutes", "score").rows() == [
+        (_D2, "session", 0, 80), (d3, "inferred", 400, None), (d4, "none", 0, None),
+    ]
