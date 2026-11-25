@@ -6,6 +6,7 @@ import dagster as dg
 import polars as pl
 from dagster import AssetCheckResult, Definitions
 
+from gadgetbridge_pipeline.defs.poi.dimensions import find_reserved_poi_names
 from gadgetbridge_pipeline.defs.resources import S3ClientResource, column
 
 _POI_BUCKET = os.environ.get("DELTALAKE_BUCKET", "deltalake")
@@ -284,6 +285,17 @@ def poi_no_same_kind_overlap(points_of_interest: pl.DataFrame) -> AssetCheckResu
     )
 
 
+@dg.asset_check(
+    asset=dg.AssetKey(["poi", "bronze", "points_of_interest"]),
+    blocking=True,
+    name="poi_names_not_reserved",
+    description="No curated POI is named like a reserved dimension member: (none) or (unknown).",
+)
+def poi_names_not_reserved(points_of_interest: pl.DataFrame) -> AssetCheckResult:
+    bad = find_reserved_poi_names(points_of_interest)
+    return AssetCheckResult(passed=not bad, metadata={"reserved_names": str(bad)})
+
+
 defs = Definitions(
     assets=[points_of_interest],
     asset_checks=[
@@ -292,5 +304,6 @@ defs = Definitions(
         poi_circle_radius_positive,
         poi_rectangle_bounds_valid,
         poi_no_same_kind_overlap,
+        poi_names_not_reserved,
     ],
 )
