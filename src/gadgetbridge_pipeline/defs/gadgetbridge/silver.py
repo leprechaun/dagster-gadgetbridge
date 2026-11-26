@@ -21,10 +21,11 @@ from gadgetbridge_pipeline.defs.resources import column
     },
     automation_condition=AutomationCondition.eager(),
     description=(
-        "Contiguous sleep periods (activity RAW_KIND 120) in Asia/Bangkok time; "
+        "Contiguous sleep periods (activity RAW_KIND 120) per device, in Asia/Bangkok time; "
         "reporting_date is the wake-up day (the next day for periods starting after 18:00)"
     ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
         column("date", "Asia/Bangkok calendar date the period started"),
         column(
             "reporting_date",
@@ -39,14 +40,14 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
         activity.with_columns(
             pl.col("TIMESTAMP").dt.convert_time_zone("Asia/Bangkok")
         )
-        .sort(by="TIMESTAMP")
+        .sort(by=["DEVICE_ID", "TIMESTAMP"])
         .select(
-            ["TIMESTAMP", "RAW_KIND"]
+            ["DEVICE_ID", "TIMESTAMP", "RAW_KIND"]
         )
-        .filter(pl.col("RAW_KIND").diff() != 0)
+        .filter(pl.col("RAW_KIND").diff().over("DEVICE_ID") != 0)
         .rename({"TIMESTAMP":"start"})
         .with_columns(
-            pl.col("start").shift(-1).alias("end")
+            pl.col("start").shift(-1).over("DEVICE_ID").alias("end")
         )
         .filter(pl.col("RAW_KIND") == 120)
         .drop(["RAW_KIND"])
@@ -59,7 +60,7 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
                 pl.col("start").dt.date()
             ).alias("reporting_date")
         )
-        .select(["date", "reporting_date", "start", "end"])
+        .select(["DEVICE_ID", "date", "reporting_date", "start", "end"])
         .filter(pl.col("end").is_not_null())
     )
 
@@ -76,10 +77,12 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
     },
     automation_condition=AutomationCondition.eager(),
     description=(
-        "Nightly sleep duration, start, and wake time, aggregated from individual sleep periods"
+        "Nightly sleep duration, start, and wake time per device, aggregated from individual "
+        "sleep periods; one row per (reporting_date, DEVICE_ID)"
     ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column("reporting_date", "Asia/Bangkok wake-up day"),
+        column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
         column("sleep_start", "Earliest sleep-period start for the day"),
         column("wake_time", "Latest sleep-period end for the day; includes naps"),
         column(
@@ -94,13 +97,13 @@ def daily_sleep_duration(sleep_periods: pl.DataFrame) -> pl.DataFrame:
         .with_columns(
             (pl.col("end") - pl.col("start")).dt.total_minutes().alias("period_minutes")
         )
-        .group_by("reporting_date")
+        .group_by(["reporting_date", "DEVICE_ID"])
         .agg(
             pl.col("start").min().alias("sleep_start"),
             pl.col("end").max().alias("wake_time"),
             pl.col("period_minutes").sum().alias("total_sleep_minutes"),
         )
-        .sort("reporting_date")
+        .sort(["reporting_date", "DEVICE_ID"])
     )
 
 
@@ -158,7 +161,10 @@ def _by_minute(df: pl.DataFrame, col: str, alias: str, group_by: list[str]) -> p
         "battery": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "battery_level"])),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Wide per-minute join of all bronze health metrics",
+    description=(
+        "Wide per-minute join of all bronze health metrics; "
+        "one row per (MINUTE, DEVICE_ID, USER_ID)"
+    ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column("MINUTE", "The minute (truncated); join key"),
         column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
@@ -231,9 +237,13 @@ def per_minute_health_metrics(
         ),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Daily distribution of binned heart rates (5 bpm bins, 40-160 range)",
+    description=(
+        "Daily distribution of binned heart rates (5 bpm bins, 40-160 range) per device; "
+        "one row per (date, DEVICE_ID, heart_rate)"
+    ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column("date", "UTC calendar date"),
+        column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
         column("heart_rate", "Lower edge of a 5-bpm bin", unit="bpm"),
         column(
             "sample_count",
@@ -246,15 +256,15 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     BIN_SIZE = 5
     return (
         activity
-        .select(["TIMESTAMP", "HEART_RATE"])
+        .select(["TIMESTAMP", "DEVICE_ID", "HEART_RATE"])
         .filter(pl.col("HEART_RATE") != 255)
         .with_columns(
             pl.col("TIMESTAMP").dt.date().alias("date"),
             (pl.col("HEART_RATE") // BIN_SIZE * BIN_SIZE).cast(pl.Int32).alias("heart_rate"),
         )
-        .group_by(["date", "heart_rate"])
+        .group_by(["date", "DEVICE_ID", "heart_rate"])
         .agg(pl.len().alias("sample_count"))
-        .sort(["date", "heart_rate"])
+        .sort(["date", "DEVICE_ID", "heart_rate"])
     )
 
 
@@ -271,11 +281,12 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
         ),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Sleep session information (start, length, periods, score, etc)",
+    description="Per-device sleep session information (start, length, periods, score, etc)",
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column(
             "index", "Row position in huami_sleep_session_sample; not a stable id",
         ),
+        column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
         column("rec", "When the session record was written (bronze TIMESTAMP)"),
         column(
             "start",
@@ -296,11 +307,14 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
 )
 def sleep_sessions(sleep: pl.DataFrame):
     sessions = []
-    for index, (rec, data) in enumerate(zip(sleep['TIMESTAMP'], sleep['DATA'], strict=False)):
+    for index, (rec, device_id, data) in enumerate(
+        zip(sleep['TIMESTAMP'], sleep['DEVICE_ID'], sleep['DATA'], strict=False)
+    ):
         session = SleepSession(data)
 
         sessions.append({
             "index": index,
+            "DEVICE_ID": device_id,
             "rec": rec,
             "midnight": session.midnight,
             "start": session.start,

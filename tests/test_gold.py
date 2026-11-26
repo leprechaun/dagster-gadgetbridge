@@ -40,14 +40,22 @@ def test_daily_health_snapshot_joins_and_averages():
         return dt.fromisoformat(d)
 
     activity_sample = pl.DataFrame({
-        "TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")], "HEART_RATE": [40.0, 60.0],
+        "TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")],
+        "DEVICE_ID": [1, 1],
+        "HEART_RATE": [40.0, 60.0],
     })
     hrv = pl.DataFrame({
-        "TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")], "VALUE": [40.0, 60.0],
+        "TIMESTAMP": [ts("2024-01-01 08:00"), ts("2024-01-01 20:00")],
+        "DEVICE_ID": [1, 1],
+        "VALUE": [40.0, 60.0],
     })
-    spo2 = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 09:00")], "SPO2": [97.0]})
-    stress = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 10:00")], "STRESS": [30.0]})
-    temperature = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 11:00")], "TEMPERATURE": [36.6]})
+    spo2 = pl.DataFrame({"TIMESTAMP": [ts("2024-01-01 09:00")], "DEVICE_ID": [1], "SPO2": [97.0]})
+    stress = pl.DataFrame({
+        "TIMESTAMP": [ts("2024-01-01 10:00")], "DEVICE_ID": [1], "STRESS": [30.0],
+    })
+    temperature = pl.DataFrame({
+        "TIMESTAMP": [ts("2024-01-01 11:00")], "DEVICE_ID": [1], "TEMPERATURE": [36.6],
+    })
 
     result = daily_health_snapshot(
         hrv=hrv,
@@ -66,10 +74,11 @@ def test_daily_health_snapshot_joins_and_averages():
 # steps_per_day
 # ---------------------------------------------------------------------------
 
-def _activity_steps(*rows):
+def _activity_steps(*rows, device_id=1):
     # each row: (timestamp_str, steps)
     return pl.DataFrame({
         "TIMESTAMP": [dt.fromisoformat(r[0]) for r in rows],
+        "DEVICE_ID": [device_id] * len(rows),
         "STEPS": [r[1] for r in rows],
     })
 
@@ -97,10 +106,11 @@ def test_steps_per_day_is_weekend_flag():
 # steps_vs_stress
 # ---------------------------------------------------------------------------
 
-def _stress_samples(*rows):
+def _stress_samples(*rows, device_id=1):
     # each row: (timestamp_str, stress)
     return pl.DataFrame({
         "TIMESTAMP": [dt.fromisoformat(r[0]) for r in rows],
+        "DEVICE_ID": [device_id] * len(rows),
         "STRESS": [r[1] for r in rows],
     })
 
@@ -136,10 +146,11 @@ def test_steps_vs_stress_inner_joins_only_days_present_in_both():
 # heart_rate_distribution_by_medication_and_weekday
 # ---------------------------------------------------------------------------
 
-def _hr_distribution(*rows):
+def _hr_distribution(*rows, device_id=1):
     # each row: (date, heart_rate, sample_count)
     return pl.DataFrame({
         "date": [r[0] for r in rows],
+        "DEVICE_ID": [device_id] * len(rows),
         "heart_rate": [r[1] for r in rows],
         "sample_count": [r[2] for r in rows],
     })
@@ -321,10 +332,11 @@ def test_is_weekend_flag_true_on_weekdays_false_on_weekends():
 # sleep_score_stats
 # ---------------------------------------------------------------------------
 
-def _sleep_sessions(*rows):
+def _sleep_sessions(*rows, device_id=1):
     # each row: (rec_timestamp_str, score)
     return pl.DataFrame({
         "rec":   [dt.fromisoformat(r[0]) for r in rows],
+        "DEVICE_ID": [device_id] * len(rows),
         "score": [r[1] for r in rows],
     })
 
@@ -441,20 +453,22 @@ def test_sleep_score_stats_checks_fails_when_mean_exceeds_max():
 # sleep_consistency
 # ---------------------------------------------------------------------------
 
-def _daily_sleep_duration(*rows):
+def _daily_sleep_duration(*rows, device_id=1):
     # each row: (reporting_date, sleep_start, wake_time) — start/end as
     # "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
     return pl.DataFrame({
         "reporting_date": [r[0] for r in rows],
+        "DEVICE_ID": [device_id] * len(rows),
         "sleep_start": pl.Series([_bkk(r[1]) for r in rows]),
         "wake_time": pl.Series([_bkk(r[2]) for r in rows]),
     })
 
 
-def _sleep_score_stats_rows(*rows):
+def _sleep_score_stats_rows(*rows, device_id=1):
     # each row: (date, mean_score)
     return pl.DataFrame({
         "date": [r[0] for r in rows],
+        "DEVICE_ID": [device_id] * len(rows),
         "mean_score": [r[1] for r in rows],
     })
 
@@ -525,3 +539,99 @@ def test_sleep_consistency_outer_joins_dates_present_in_only_one_input():
     assert result["date"].to_list() == [datetime.date(2024, 1, 1), datetime.date(2024, 1, 2)]
     assert result["score_stddev"][0] is None
     assert result["sleep_start_stddev_minutes"][1] is None
+
+
+# ---------------------------------------------------------------------------
+# DEVICE_ID is part of every group key: two devices never get blended together
+# ---------------------------------------------------------------------------
+
+def test_steps_per_day_keeps_devices_separate():
+    activity = pl.concat([
+        _activity_steps(("2024-01-15 08:00:00", 100), device_id=1),
+        _activity_steps(("2024-01-15 09:00:00", 40), device_id=2),
+    ])
+    result = steps_per_day(activity).sort("DEVICE_ID")
+    assert result["DEVICE_ID"].to_list() == [1, 2]
+    assert result["STEPS"].to_list() == [100, 40]
+
+
+def test_steps_vs_stress_joins_within_device_only():
+    activity = pl.concat([
+        _activity_steps(("2024-01-15 08:00:00", 100), device_id=1),
+        _activity_steps(("2024-01-15 08:00:00", 40), device_id=2),
+    ])
+    # stress only recorded by device 2: device 1 must not pick it up on the same date
+    stress = _stress_samples(("2024-01-15 08:00:00", 20.0), device_id=2)
+    result = steps_vs_stress(activity, stress)
+    assert result["DEVICE_ID"].to_list() == [2]
+    assert result["total_steps"].to_list() == [40]
+
+
+def test_daily_health_snapshot_keeps_devices_separate():
+    def ts(d):
+        return dt.fromisoformat(d)
+
+    def frame(col, v1, v2):
+        return pl.DataFrame({
+            "TIMESTAMP": [ts("2024-01-01 08:00")] * 2,
+            "DEVICE_ID": [1, 2],
+            col: [v1, v2],
+        })
+
+    result = daily_health_snapshot(
+        activity_sample=frame("HEART_RATE", 40.0, 80.0),
+        hrv=frame("VALUE", 10.0, 90.0),
+        spo2=frame("SPO2", 95.0, 99.0),
+        stress=frame("STRESS", 10.0, 50.0),
+        temperature=frame("TEMPERATURE", 36.0, 37.0),
+    ).sort("DEVICE_ID")
+    assert result["DEVICE_ID"].to_list() == [1, 2]
+    assert result["avg_hrv"].to_list() == [10.0, 90.0]
+    assert result["heart_rate_max"].to_list() == [40.0, 80.0]
+
+
+def test_heart_rate_distribution_normalizes_within_device():
+    hr = pl.concat([
+        _hr_distribution((datetime.date(2024, 1, 15), 60, 30), device_id=1),
+        _hr_distribution((datetime.date(2024, 1, 15), 60, 10), device_id=2),
+    ])
+    med = _medicine_log((datetime.date(2099, 1, 1), "placeholder", True))
+    result = heart_rate_distribution_by_medication_and_weekday(hr, med).sort("DEVICE_ID")
+    assert result["sample_count"].to_list() == [30, 10]
+    # each device is its own group, so each bin is 100% of its device's total
+    assert result["proportion"].to_list() == [1.0, 1.0]
+
+
+def test_sleep_score_stats_keeps_devices_and_rolling_window_separate():
+    sessions = pl.concat([
+        _sleep_sessions(
+            *[(f"2024-01-{d:02d} 08:00:00", 80) for d in range(1, 8)], device_id=1,
+        ),
+        _sleep_sessions(("2024-01-07 08:00:00", 50), device_id=2),
+    ])
+    result = sleep_score_stats(sessions).sort(["DEVICE_ID", "date"])
+    dev1 = result.filter(pl.col("DEVICE_ID") == 1)
+    dev2 = result.filter(pl.col("DEVICE_ID") == 2)
+    assert dev1["score_7d_ma"].to_list() == [None] * 6 + [80.0]
+    # device 2 has a single row: its window must not borrow device 1's history
+    assert dev2["score_7d_ma"].to_list() == [None]
+    assert dev2["mean_score"].to_list() == [50.0]
+
+
+def test_sleep_consistency_rolls_and_joins_within_device():
+    nights = _regular_nights(14)
+    duration = pl.concat([
+        _daily_sleep_duration(*nights, device_id=1),
+        _daily_sleep_duration(*nights[:3], device_id=2),
+    ])
+    stats = pl.concat([
+        _sleep_score_stats_rows(*[(d, 80.0) for d, _, _ in nights], device_id=1),
+        _sleep_score_stats_rows(*[(d, 80.0) for d, _, _ in nights[:3]], device_id=2),
+    ])
+    result = sleep_consistency(duration, stats)
+    assert result.shape[0] == 14 + 3  # no cross-device join blow-up
+    dev1 = result.filter(pl.col("DEVICE_ID") == 1).sort("date")
+    dev2 = result.filter(pl.col("DEVICE_ID") == 2)
+    assert dev1["sleep_start_stddev_minutes"][-1] == 0.0
+    # device 2 never fills a 14-row window
+    assert dev2["sleep_start_stddev_minutes"].null_count() == 3

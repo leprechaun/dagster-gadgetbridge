@@ -4,6 +4,7 @@ import polars as pl
 import pytest
 
 from gadgetbridge_pipeline.defs.gadgetbridge.silver import (
+    daily_heart_rate_distribution,
     daily_sleep_duration,
     daily_sleep_duration_checks,
     per_minute_health_metrics,
@@ -230,7 +231,7 @@ def test_output_schema():
         ("2024-01-15 07:00:00", AWAKE),
     )
     result = sleep_periods_based_on_activity(activity)
-    assert set(result.columns) == {"date", "reporting_date", "start", "end"}
+    assert set(result.columns) == {"DEVICE_ID", "date", "reporting_date", "start", "end"}
 
 
 def test_awake_sleep_awake_produces_one_period():
@@ -497,10 +498,11 @@ def _bkk(s):
     return datetime.datetime.fromisoformat(s).replace(tzinfo=bangkok)
 
 
-def _sleep_periods(*rows):
+def _sleep_periods(*rows, device_id=1):
     # each row: (reporting_date, start, end) — start/end as
     # "YYYY-MM-DD HH:MM:SS" Bangkok-local strings
     return pl.DataFrame({
+        "DEVICE_ID":       [device_id] * len(rows),
         "date":            [r[0] for r in rows],
         "reporting_date":  [r[0] for r in rows],
         "start":           pl.Series([_bkk(r[1]) for r in rows]),
@@ -516,7 +518,9 @@ def test_daily_sleep_duration_output_schema():
         ("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"),
     )
     result = daily_sleep_duration(periods)
-    expected_columns = {"reporting_date", "sleep_start", "wake_time", "total_sleep_minutes"}
+    expected_columns = {
+        "reporting_date", "DEVICE_ID", "sleep_start", "wake_time", "total_sleep_minutes",
+    }
     assert set(result.columns) == expected_columns
 
 
@@ -630,3 +634,54 @@ def test_daily_sleep_duration_checks_reports_multiple_failures_in_one_pass():
         "less_than_or_equal_to(1440)",
         "sleep_start_before_wake_time",
     }
+
+
+# ---------------------------------------------------------------------------
+# DEVICE_ID is carried through and is part of every group key
+# ---------------------------------------------------------------------------
+
+def test_sleep_periods_are_split_per_device():
+    # interleaved by time, a global diff/shift would pair device 1's start with device 2's row
+    d1 = _sleep_activity(
+        ("2024-01-14 16:00:00", AWAKE),
+        ("2024-01-14 17:00:00", SLEEP),
+        ("2024-01-15 07:00:00", AWAKE),
+    )
+    d2 = _sleep_activity(
+        ("2024-01-14 16:30:00", AWAKE),
+        ("2024-01-14 17:30:00", SLEEP),
+        ("2024-01-15 06:30:00", AWAKE),
+    ).with_columns(pl.lit(2, dtype=pl.Int64).alias("DEVICE_ID"))
+    result = sleep_periods_based_on_activity(pl.concat([d1, d2])).sort("DEVICE_ID")
+    assert result["DEVICE_ID"].to_list() == [1, 2]
+    lengths = (result["end"] - result["start"]).dt.total_minutes().to_list()
+    assert lengths == [14 * 60, 13 * 60]
+
+
+def test_daily_sleep_duration_keeps_devices_separate():
+    periods = pl.concat([
+        _sleep_periods(("2024-01-15", "2024-01-14 23:00:00", "2024-01-15 07:00:00"), device_id=1),
+        _sleep_periods(("2024-01-15", "2024-01-15 01:00:00", "2024-01-15 06:00:00"), device_id=2),
+    ])
+    result = daily_sleep_duration(periods).sort("DEVICE_ID")
+    assert result["DEVICE_ID"].to_list() == [1, 2]
+    assert result["total_sleep_minutes"].to_list() == [8 * 60, 5 * 60]
+
+
+def test_sleep_sessions_carries_device_id():
+    sleep = _sleep_bronze(
+        (_ts_utc("2024-01-15 00:00:00"), 1_700_000_000, 30, 480, 80),
+    ).with_columns(pl.lit(7, dtype=pl.Int64).alias("DEVICE_ID"))
+    assert sleep_sessions(sleep)["DEVICE_ID"].to_list() == [7]
+
+
+def test_daily_heart_rate_distribution_keeps_devices_separate():
+    activity = pl.concat([
+        _sleep_activity(("2024-01-15 08:00:00", AWAKE)),
+        _sleep_activity(("2024-01-15 09:00:00", AWAKE)).with_columns(
+            pl.lit(2, dtype=pl.Int64).alias("DEVICE_ID")
+        ),
+    ])
+    result = daily_heart_rate_distribution(activity).sort("DEVICE_ID")
+    assert result["DEVICE_ID"].to_list() == [1, 2]
+    assert result["sample_count"].to_list() == [1, 1]

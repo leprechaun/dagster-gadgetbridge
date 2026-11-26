@@ -9,6 +9,9 @@ from pandera.typing.polars import Series
 from gadgetbridge_pipeline.defs.resources import column
 
 _UTC_DATE = column("date", "UTC calendar date")
+_DEVICE_ID = column(
+    "DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial",
+)
 _WEEKDAY = column("weekday", "ISO weekday, 1 = Monday to 7 = Sunday")
 _IS_WEEKEND = column("is_weekend", "Saturday or Sunday")
 
@@ -42,9 +45,13 @@ def _normalize_time_of_day(expr: pl.Expr) -> pl.Expr:
         ),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Daily step totals (UTC date), with weekday and weekend flag",
+    description=(
+        "Daily step totals per device (UTC date), with weekday and weekend flag; "
+        "one row per (date, DEVICE_ID)"
+    ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         _UTC_DATE,
+        _DEVICE_ID,
         column("STEPS", "Total steps that day", unit="steps"),
         _WEEKDAY,
         _IS_WEEKEND,
@@ -52,14 +59,15 @@ def _normalize_time_of_day(expr: pl.Expr) -> pl.Expr:
 )
 def steps_per_day(activity):
     return (
-        activity.select(['TIMESTAMP', 'STEPS'])
+        activity.select(['TIMESTAMP', 'DEVICE_ID', 'STEPS'])
         .group_by([
-            pl.col("TIMESTAMP").dt.date().alias("date")
+            pl.col("TIMESTAMP").dt.date().alias("date"),
+            "DEVICE_ID",
         ])
         .agg(
             pl.col("STEPS").sum()
         ).sort(
-            by=['date']
+            by=['date', 'DEVICE_ID']
         ).with_columns(
             pl.col("date").dt.weekday().alias("weekday"),
         ).with_columns(
@@ -84,11 +92,12 @@ def steps_per_day(activity):
     },
     automation_condition=AutomationCondition.eager(),
     description=(
-        "One row per day (UTC date) of average HRV, SpO2, stress and temperature, "
+        "One row per device per day (UTC date) of average HRV, SpO2, stress and temperature, "
         "plus heart rate min/max/median/p10/p90"
     ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         _UTC_DATE,
+        _DEVICE_ID,
         column("avg_hrv", "Mean heart-rate variability", unit="ms"),
         column("avg_spo2", "Mean blood oxygen saturation", unit="percent"),
         column("avg_stress", "Mean Zepp stress score (0-100)"),
@@ -122,7 +131,7 @@ def daily_health_snapshot(
     def by_day(df: pl.DataFrame, col: str, alias: str) -> pl.DataFrame:
         return (
             df.with_columns(pl.col("TIMESTAMP").dt.date().alias("date"))
-            .group_by("date")
+            .group_by(["date", "DEVICE_ID"])
             .agg(pl.col(col).mean().alias(alias))
         )
 
@@ -137,7 +146,7 @@ def daily_health_snapshot(
         activity_sample.with_columns(
             pl.col("TIMESTAMP").dt.date().alias("date")
         ).group_by(
-            ["date"]
+            ["date", "DEVICE_ID"]
         ).agg(
             pl.col("HEART_RATE").min().alias("heart_rate_min"),
             pl.col("HEART_RATE").max().alias("heart_rate_max"),
@@ -150,9 +159,9 @@ def daily_health_snapshot(
     result = frames[0]
 
     for f in frames[1:]:
-        result = result.join(f, on="date", how="full", coalesce=True)
+        result = result.join(f, on=["date", "DEVICE_ID"], how="full", coalesce=True)
 
-    sorted_df = result.sort("date")
+    sorted_df = result.sort(["date", "DEVICE_ID"])
 
     return sorted_df
 
@@ -166,9 +175,13 @@ def daily_health_snapshot(
         "stress": dg.AssetIn(key=dg.AssetKey(["gadgetbridge", "bronze", "huami_stress_sample"])),
     },
     automation_condition=AutomationCondition.eager(),
-    description="Daily step totals joined with average stress score, for correlation analysis",
+    description=(
+        "Daily step totals joined with average stress score, per device, "
+        "for correlation analysis"
+    ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
-        column("date", "UTC calendar date; only days with both steps and stress data"),
+        column("date", "UTC calendar date; only device-days with both steps and stress data"),
+        _DEVICE_ID,
         column("total_steps", "Total steps that day", unit="steps"),
         column("avg_stress", "Mean Zepp stress score (0-100)"),
         column("median_stress", "Median Zepp stress score (0-100)"),
@@ -178,16 +191,16 @@ def daily_health_snapshot(
 )
 def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFrame:
     daily_steps = (
-        activity.select(["TIMESTAMP", "STEPS"])
+        activity.select(["TIMESTAMP", "DEVICE_ID", "STEPS"])
         .with_columns(pl.col("TIMESTAMP").dt.date().alias("date"))
-        .group_by("date")
+        .group_by(["date", "DEVICE_ID"])
         .agg(pl.col("STEPS").sum().alias("total_steps"))
     )
 
     daily_stress = (
-        stress.select(["TIMESTAMP", "STRESS"])
+        stress.select(["TIMESTAMP", "DEVICE_ID", "STRESS"])
         .with_columns(pl.col("TIMESTAMP").dt.date().alias("date"))
-        .group_by("date")
+        .group_by(["date", "DEVICE_ID"])
         .agg(
             pl.col("STRESS").mean().alias("avg_stress"),
             pl.col("STRESS").median().alias("median_stress"),
@@ -195,8 +208,8 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
     )
 
     return (
-        daily_steps.join(daily_stress, on="date", how="inner")
-        .sort("date")
+        daily_steps.join(daily_stress, on=["date", "DEVICE_ID"], how="inner")
+        .sort(["date", "DEVICE_ID"])
         .with_columns(
             pl.col("date").dt.weekday().alias("weekday"),
             _is_weekend("date").alias("is_weekend"),
@@ -216,9 +229,10 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
     automation_condition=AutomationCondition.eager(),
     description=(
         "Heart rate distribution normalized within each "
-        "(medication_state x weekday/weekend) group"
+        "(device x medication_state x weekday/weekend) group"
     ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
+        _DEVICE_ID,
         column("heart_rate", "Lower edge of a 5-bpm bin", unit="bpm"),
         column(
             "medication_state",
@@ -230,7 +244,7 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
         ),
         column(
             "proportion",
-            "sample_count as a fraction of its (medication_state, is_weekend) group; "
+            "sample_count as a fraction of its (DEVICE_ID, medication_state, is_weekend) group; "
             "sums to 1 per group",
         ),
     ])},
@@ -253,15 +267,15 @@ def heart_rate_distribution_by_medication_and_weekday(
             pl.col("medication_state").fill_null("sober"),
             _is_weekend("date").alias("is_weekend"),
         )
-        .group_by(["heart_rate", "medication_state", "is_weekend"])
+        .group_by(["DEVICE_ID", "heart_rate", "medication_state", "is_weekend"])
         .agg(pl.col("sample_count").sum())
         .with_columns(
             (
                 pl.col("sample_count")
-                / pl.col("sample_count").sum().over(["medication_state", "is_weekend"])
+                / pl.col("sample_count").sum().over(["DEVICE_ID", "medication_state", "is_weekend"])
             ).alias("proportion")
         )
-        .sort(["medication_state", "is_weekend", "heart_rate"])
+        .sort(["DEVICE_ID", "medication_state", "is_weekend", "heart_rate"])
     )
 
 
@@ -322,19 +336,20 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
     },
     automation_condition=AutomationCondition.eager(),
     description=(
-        "Daily sleep score statistics (mean, max, session count), "
-        "with a 7-day rolling average"
+        "Daily sleep score statistics (mean, max, session count) per device, "
+        "with a 7-row rolling average computed within each device"
     ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column("date", "UTC calendar date of the session records"),
+        _DEVICE_ID,
         column("mean_score", "Mean device sleep score of the day's sessions, to 1 decimal"),
         column("max_score", "Best device sleep score of the day's sessions"),
         column("session_count", "Sleep sessions that day, naps included"),
         _IS_WEEKEND,
         column(
             "score_7d_ma",
-            "Rolling mean of mean_score over the last 7 rows (not calendar days); "
-            "null for the first 6",
+            "Rolling mean of mean_score over the device's last 7 rows (not calendar days); "
+            "null for each device's first 6",
         ),
     ])},
 )
@@ -342,18 +357,18 @@ def sleep_score_stats(sleep_sessions: pl.DataFrame) -> pl.DataFrame:
     return (
         sleep_sessions
         .with_columns(pl.col("rec").dt.date().alias("date"))
-        .group_by("date")
+        .group_by(["date", "DEVICE_ID"])
         .agg(
             pl.col("score").mean().round(1).alias("mean_score"),
             pl.col("score").max().alias("max_score"),
             pl.len().cast(pl.Int64).alias("session_count"),
         )
-        .sort(by="date")
+        .sort(by=["date", "DEVICE_ID"])
         .with_columns(
             _is_weekend("date").alias("is_weekend"),
         )
         .with_columns(
-            pl.col("mean_score").rolling_mean(window_size=7).round(1).alias("score_7d_ma"),
+            pl.col("mean_score").rolling_mean(window_size=7).over("DEVICE_ID").round(1).alias("score_7d_ma"),
         )
     )
 
@@ -376,25 +391,29 @@ _CONSISTENCY_WINDOW_DAYS = 14
     },
     automation_condition=AutomationCondition.eager(),
     description=(
-        f"Rolling {_CONSISTENCY_WINDOW_DAYS}-day standard deviation of bedtime, wake time, "
-        "and sleep score — how regular sleep is, kept separate from how good it is"
+        f"Per-device rolling {_CONSISTENCY_WINDOW_DAYS}-day standard deviation of bedtime, "
+        "wake time, and sleep score — how regular sleep is, kept separate from how good it is"
     ),
     metadata={"dagster/column_schema": dg.TableSchema(columns=[
         column("date", "Sleep reporting_date (Asia/Bangkok) joined with sleep_score_stats date"),
+        _DEVICE_ID,
         column(
             "sleep_start_stddev_minutes",
-            f"Standard deviation of bedtime over the last {_CONSISTENCY_WINDOW_DAYS} rows",
+            f"Standard deviation of bedtime over the device's last "
+            f"{_CONSISTENCY_WINDOW_DAYS} rows",
             unit="minutes",
         ),
         column(
             "wake_time_stddev_minutes",
-            f"Standard deviation of wake time over the last {_CONSISTENCY_WINDOW_DAYS} rows; "
+            f"Standard deviation of wake time over the device's last "
+            f"{_CONSISTENCY_WINDOW_DAYS} rows; "
             "naps count as wake times",
             unit="minutes",
         ),
         column(
             "score_stddev",
-            f"Standard deviation of mean_score over the last {_CONSISTENCY_WINDOW_DAYS} rows",
+            f"Standard deviation of mean_score over the device's last "
+            f"{_CONSISTENCY_WINDOW_DAYS} rows",
         ),
     ])},
 )
@@ -404,11 +423,11 @@ def sleep_consistency(
 ) -> pl.DataFrame:
     timing = (
         daily_sleep_duration
-        .select(["reporting_date", "sleep_start", "wake_time"])
+        .select(["reporting_date", "DEVICE_ID", "sleep_start", "wake_time"])
         .with_columns(
             pl.col(["sleep_start", "wake_time"]).dt.convert_time_zone("Asia/Bangkok")
         )
-        .sort("reporting_date")
+        .sort(["reporting_date", "DEVICE_ID"])
         .with_columns(
             _normalize_time_of_day(pl.col("sleep_start")).alias("sleep_start"),
             _normalize_time_of_day(pl.col("wake_time")).alias("wake_time"),
@@ -420,28 +439,39 @@ def sleep_consistency(
         .with_columns(
             pl.col("sleep_start_minutes")
             .rolling_std(window_size=_CONSISTENCY_WINDOW_DAYS)
+            .over("DEVICE_ID")
             .alias("sleep_start_stddev_minutes"),
             pl.col("wake_time_minutes")
             .rolling_std(window_size=_CONSISTENCY_WINDOW_DAYS)
+            .over("DEVICE_ID")
             .alias("wake_time_stddev_minutes"),
         )
-        .select(["reporting_date", "sleep_start_stddev_minutes", "wake_time_stddev_minutes"])
+        .select(
+            [
+                "reporting_date", "DEVICE_ID",
+                "sleep_start_stddev_minutes", "wake_time_stddev_minutes",
+            ]
+        )
         .rename({"reporting_date": "date"})
     )
 
     score = (
         sleep_score_stats
-        .select(["date", "mean_score"])
-        .sort("date")
+        .select(["date", "DEVICE_ID", "mean_score"])
+        .sort(["date", "DEVICE_ID"])
         .with_columns(
             pl.col("mean_score")
             .rolling_std(window_size=_CONSISTENCY_WINDOW_DAYS)
+            .over("DEVICE_ID")
             .alias("score_stddev"),
         )
-        .select(["date", "score_stddev"])
+        .select(["date", "DEVICE_ID", "score_stddev"])
     )
 
-    return timing.join(score, on="date", how="full", coalesce=True).sort("date")
+    return (
+        timing.join(score, on=["date", "DEVICE_ID"], how="full", coalesce=True)
+        .sort(["date", "DEVICE_ID"])
+    )
 
 
 class SleepScoreStatsSchema(pa.DataFrameModel):
