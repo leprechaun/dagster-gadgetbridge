@@ -49,7 +49,7 @@ def _normalize_time_of_day(expr: pl.Expr) -> pl.Expr:
         "Daily step totals per device (UTC date), with weekday and weekend flag; "
         "one row per (date, DEVICE_ID)"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         _UTC_DATE,
         _DEVICE_ID,
         column("STEPS", "Total steps that day", unit="steps"),
@@ -95,7 +95,7 @@ def steps_per_day(activity):
         "One row per device per day (UTC date) of average HRV, SpO2, stress and temperature, "
         "plus heart rate min/max/median/p10/p90"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         _UTC_DATE,
         _DEVICE_ID,
         column("avg_hrv", "Mean heart-rate variability", unit="ms"),
@@ -179,7 +179,7 @@ def daily_health_snapshot(
         "Daily step totals joined with average stress score, per device, "
         "for correlation analysis"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         column("date", "UTC calendar date; only device-days with both steps and stress data"),
         _DEVICE_ID,
         column("total_steps", "Total steps that day", unit="steps"),
@@ -231,7 +231,7 @@ def steps_vs_stress(activity: pl.DataFrame, stress: pl.DataFrame) -> pl.DataFram
         "Heart rate distribution normalized within each "
         "(device x medication_state x weekday/weekend) group"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         _DEVICE_ID,
         column("heart_rate", "Lower edge of a 5-bpm bin", unit="bpm"),
         column(
@@ -339,7 +339,7 @@ def daily_sleep_schedule(sleep_periods: pl.DataFrame) -> pl.DataFrame:
         "Daily sleep score statistics (mean, max, session count) per device, "
         "with a 7-row rolling average computed within each device"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         column("date", "UTC calendar date of the session records"),
         _DEVICE_ID,
         column("mean_score", "Mean device sleep score of the day's sessions, to 1 decimal"),
@@ -394,7 +394,7 @@ _CONSISTENCY_WINDOW_DAYS = 14
         f"Per-device rolling {_CONSISTENCY_WINDOW_DAYS}-day standard deviation of bedtime, "
         "wake time, and sleep score — how regular sleep is, kept separate from how good it is"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         column("date", "Sleep reporting_date (Asia/Bangkok) joined with sleep_score_stats date"),
         _DEVICE_ID,
         column(

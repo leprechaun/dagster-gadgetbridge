@@ -635,3 +635,28 @@ def test_sleep_consistency_rolls_and_joins_within_device():
     assert dev1["sleep_start_stddev_minutes"][-1] == 0.0
     # device 2 never fills a 14-row window
     assert dev2["sleep_start_stddev_minutes"].null_count() == 3
+
+
+# ---------------------------------------------------------------------------
+# Tables that gained DEVICE_ID must merge their schema into the existing Delta
+# table, otherwise the first write after the change fails on a schema mismatch.
+# ---------------------------------------------------------------------------
+
+def test_device_id_tables_merge_schema_on_write():
+    from gadgetbridge_pipeline.defs.gadgetbridge import gold as gold_module
+    from gadgetbridge_pipeline.defs.gadgetbridge import silver as silver_module
+
+    expected = {
+        "sleep_periods_based_on_activity", "daily_sleep_duration",
+        "daily_heart_rate_distribution", "sleep_sessions",
+        "steps_per_day", "daily_health_snapshot", "steps_vs_stress",
+        "heart_rate_distribution_by_medication_and_weekday",
+        "sleep_score_stats", "sleep_consistency",
+    }
+    assets = [*silver_module.defs.assets, *gold_module.defs.assets]
+    merging = {
+        a.key.path[-1]
+        for a in assets
+        if (a.metadata_by_key[a.key] or {}).get("schema_mode") == "merge"
+    }
+    assert merging == expected

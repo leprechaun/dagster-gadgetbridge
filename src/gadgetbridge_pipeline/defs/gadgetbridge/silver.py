@@ -24,7 +24,7 @@ from gadgetbridge_pipeline.defs.resources import column
         "Contiguous sleep periods (activity RAW_KIND 120) per device, in Asia/Bangkok time; "
         "reporting_date is the wake-up day (the next day for periods starting after 18:00)"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
         column("date", "Asia/Bangkok calendar date the period started"),
         column(
@@ -80,7 +80,7 @@ def sleep_periods_based_on_activity(activity: pl.DataFrame):
         "Nightly sleep duration, start, and wake time per device, aggregated from individual "
         "sleep periods; one row per (reporting_date, DEVICE_ID)"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         column("reporting_date", "Asia/Bangkok wake-up day"),
         column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
         column("sleep_start", "Earliest sleep-period start for the day"),
@@ -241,7 +241,7 @@ def per_minute_health_metrics(
         "Daily distribution of binned heart rates (5 bpm bins, 40-160 range) per device; "
         "one row per (date, DEVICE_ID, heart_rate)"
     ),
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         column("date", "UTC calendar date"),
         column("DEVICE_ID", "Gadgetbridge's internal device row id, not a hardware serial"),
         column("heart_rate", "Lower edge of a 5-bpm bin", unit="bpm"),
@@ -282,7 +282,7 @@ def daily_heart_rate_distribution(activity: pl.DataFrame) -> pl.DataFrame:
     },
     automation_condition=AutomationCondition.eager(),
     description="Per-device sleep session information (start, length, periods, score, etc)",
-    metadata={"dagster/column_schema": dg.TableSchema(columns=[
+    metadata={"schema_mode": "merge", "dagster/column_schema": dg.TableSchema(columns=[
         column(
             "index", "Row position in huami_sleep_session_sample; not a stable id",
         ),
